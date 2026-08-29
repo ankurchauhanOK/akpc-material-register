@@ -37,8 +37,8 @@ export default async function AppLayout({
     <AuthProvider>
       <div className="flex min-h-full flex-1 flex-col">
         <AppHeader
-          userName={profile.full_name}
           role={profile.role}
+          userEmail={user.email}
         />
         <div className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</div>
       </div>
