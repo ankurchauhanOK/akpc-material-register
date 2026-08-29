@@ -2,6 +2,6 @@
 
 import { TransactionForm } from "@/components/transactions/transaction-form";
 
-export function ReceiveForm() {
-  return <TransactionForm direction="received" />;
+export function GiveForm() {
+  return <TransactionForm direction="given" />;
 }

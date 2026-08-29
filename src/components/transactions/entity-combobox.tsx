@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactElement, type ReactNode } from "react";
 import { PlusIcon } from "lucide-react";
 import {
   Dialog,
   DialogContent,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Command,
@@ -94,22 +95,28 @@ export function EntityCombobox({
   return (
     <>
       <Dialog open={open} onOpenChange={setOpen}>
-        {trigger ?? (
-          <Button
-            type="button"
-            variant="outline"
-            className="h-11 w-full justify-between font-normal"
-            aria-label={placeholder}
-          >
-            <span
-              className={cn(
-                "truncate text-left",
-                !selected && "text-muted-foreground"
-              )}
-            >
-              {selected ? selected.name : placeholder}
-            </span>
-          </Button>
+        {trigger ? (
+          <DialogTrigger render={trigger as ReactElement} />
+        ) : (
+          <DialogTrigger
+            render={
+              <Button
+                type="button"
+                variant="outline"
+                className="h-11 w-full justify-between font-normal"
+                aria-label={placeholder}
+              >
+                <span
+                  className={cn(
+                    "truncate text-left",
+                    !selected && "text-muted-foreground"
+                  )}
+                >
+                  {selected ? selected.name : placeholder}
+                </span>
+              </Button>
+            }
+          />
         )}
         <DialogContent className="p-0 sm:max-w-lg">
           <DialogTitle className="sr-only">{placeholder}</DialogTitle>

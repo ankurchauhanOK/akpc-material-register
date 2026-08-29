@@ -23,6 +23,12 @@ export function AppHeader({
 
         <div className="flex items-center gap-2">
           <Link
+            href="/give"
+            className="inline-flex h-9 items-center justify-center rounded-lg bg-amber-600 px-3 text-sm font-medium text-white hover:bg-amber-700"
+          >
+            − Give
+          </Link>
+          <Link
             href="/receive"
             className="inline-flex h-9 items-center justify-center rounded-lg bg-emerald-600 px-3 text-sm font-medium text-white hover:bg-emerald-700"
           >
