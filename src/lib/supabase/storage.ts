@@ -26,6 +26,23 @@ export async function uploadChallan(file: File): Promise<string> {
 }
 
 /**
+ * Build a temporary signed URL for a stored challan so the UI can preview /
+ * download it without exposing the bucket directly (the bucket is private).
+ * Returns null when there is no stored challan (empty path) or signing fails.
+ */
+export async function createSignedChallanUrl(
+  path: string
+): Promise<string | null> {
+  if (!path) return null;
+  const supabase = createClient();
+  const { data, error } = await supabase.storage
+    .from(BUCKET)
+    .createSignedUrl(path, 300, { download: false });
+  if (error || !data?.signedUrl) return null;
+  return data.signedUrl;
+}
+
+/**
  * Best-effort removal of an orphaned challan when a transaction insert
  * fails after a successful upload.
  *

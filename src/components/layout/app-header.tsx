@@ -12,13 +12,27 @@ export function AppHeader({
   return (
     <header className="sticky top-0 z-10 border-b bg-white">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-        <div className="flex min-w-0 items-baseline gap-2">
+        <div className="flex min-w-0 items-center gap-4">
           <Link
             href="/dashboard"
             className="text-sm font-semibold tracking-tight hover:underline"
           >
             AKPC Material Register
           </Link>
+          <nav className="hidden items-center gap-1 text-sm text-zinc-500 sm:flex">
+            <Link
+              href="/dashboard"
+              className="rounded-md px-2 py-1 hover:bg-muted hover:text-foreground"
+            >
+              Dashboard
+            </Link>
+            <Link
+              href="/records"
+              className="rounded-md px-2 py-1 hover:bg-muted hover:text-foreground"
+            >
+              Records
+            </Link>
+          </nav>
         </div>
 
         <div className="flex items-center gap-2">
