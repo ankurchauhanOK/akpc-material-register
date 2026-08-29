@@ -99,7 +99,7 @@ export function ChallanUploader({
           )}
         >
           <ImagePlusIcon className="size-8 opacity-60" />
-          <span className="font-medium">Add challan photo</span>
+          <span className="font-medium">Add challan photo (optional)</span>
           <span className="text-xs text-muted-foreground">
             Take photo · choose photo · PDF
           </span>

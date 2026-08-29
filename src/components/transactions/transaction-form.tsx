@@ -167,7 +167,6 @@ export function TransactionForm({ direction }: { direction: Direction }) {
     if (amount.trim() && (Number.isNaN(a) || a < 0))
       next.amount = "Enter a valid amount.";
     if (!date) next.date = "Enter a date.";
-    if (!challan) next.challan = "Challan photo is required.";
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -193,11 +192,13 @@ export function TransactionForm({ direction }: { direction: Direction }) {
     let challanPath: string | null = null;
 
     try {
-      // 1. Upload challan first
-      const prepared = await maybeCompressImage(challan!);
-      challanPath = await uploadChallan(prepared);
+      // 1. Upload challan first (optional — skipped when none provided).
+      if (challan) {
+        const prepared = await maybeCompressImage(challan);
+        challanPath = await uploadChallan(prepared);
+      }
 
-      // 2. Create the transaction with the storage path
+      // 2. Create the transaction with the storage path ("" when no challan).
       const created = await createTransaction({
         type: direction,
         materialId: materialId!,
@@ -205,7 +206,7 @@ export function TransactionForm({ direction }: { direction: Direction }) {
         pieces: Number(pieces),
         totalAmount: Number(amount.replace(/,/g, "")) || 0,
         transactionDate: date,
-        challanPath,
+        challanPath: challanPath ?? "",
         createdBy: user.id,
       });
 
