@@ -31,7 +31,7 @@ function timeOfDayGreeting() {
 }
 
 export function DashboardPage() {
-  const { profile, role } = useAuth();
+  const { profile, role, canCreate } = useAuth();
   const { data: rows = [], isLoading, error } = useTransactions();
 
   const today = todayISO();
@@ -69,21 +69,23 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {/* Quick actions */}
-      <div className="mb-6 grid grid-cols-2 gap-3">
-        <Link
-          href="/receive"
-          className="flex h-16 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-base font-semibold text-white hover:bg-emerald-700"
-        >
-          <ArrowDownLeftIcon className="size-5" /> + Receive Material
-        </Link>
-        <Link
-          href="/give"
-          className="flex h-16 items-center justify-center gap-2 rounded-xl bg-amber-600 text-base font-semibold text-white hover:bg-amber-700"
-        >
-          <ArrowUpRightIcon className="size-5" /> − Give Material
-        </Link>
-      </div>
+      {/* Quick actions (hidden for read-only viewers) */}
+      {canCreate && (
+        <div className="mb-6 grid grid-cols-2 gap-3">
+          <Link
+            href="/receive"
+            className="flex h-16 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-base font-semibold text-white hover:bg-emerald-700"
+          >
+            <ArrowDownLeftIcon className="size-5" /> + Receive Material
+          </Link>
+          <Link
+            href="/give"
+            className="flex h-16 items-center justify-center gap-2 rounded-xl bg-amber-600 text-base font-semibold text-white hover:bg-amber-700"
+          >
+            <ArrowUpRightIcon className="size-5" /> − Give Material
+          </Link>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="rounded-xl border bg-white p-8 text-center text-sm text-zinc-500">

@@ -238,6 +238,15 @@ export function TransactionForm({ direction }: { direction: Direction }) {
     }
   }
 
+  // ----- no-permission state (viewers should not reach the form) -----
+  if (!canCreate) {
+    return (
+      <div className="mx-auto max-w-md rounded-xl border bg-white p-8 text-center shadow-sm">
+        <p className="text-sm text-zinc-600">{ui.invalidPermission}</p>
+      </div>
+    );
+  }
+
   // ----- success state -----
   if (saved) {
     return (

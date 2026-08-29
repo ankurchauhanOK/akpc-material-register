@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import { TypeBadge } from "@/components/records/type-badge";
 import { useAuth } from "@/hooks/useAuth";
+import type { Role } from "@/lib/supabase/types";
 import {
   useTransactions,
   summarizeMovement,
@@ -29,8 +30,27 @@ import { formatDate, formatINR, formatPieces } from "@/lib/format";
 
 type FilterType = "all" | "received" | "given";
 
+// Mirror the DB update policy client-side so operators only see Edit on
+// records they can actually update (owner + within 24h). RLS is still the
+// real authority — this just avoids a confusing silent rejection.
+function canEditRecord({
+  role,
+  userId,
+  transaction,
+}: {
+  role: Role | null;
+  userId?: string | undefined;
+  transaction: TransactionWithNames;
+}): boolean {
+  if (role === "admin") return true;
+  if (role !== "operator" || !userId) return false;
+  if (transaction.created_by !== userId) return false;
+  const windowMs = 24 * 60 * 60 * 1000;
+  return Date.now() - new Date(transaction.created_at).getTime() <= windowMs;
+}
+
 export function RecordsPage() {
-  const { role, isAdmin } = useAuth();
+  const { role, isAdmin, user } = useAuth();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [type, setType] = useState<FilterType>("all");
@@ -215,7 +235,11 @@ export function RecordsPage() {
           transaction={detail}
           open={!!detail}
           onOpenChange={(o) => !o && setDetail(null)}
-          canEdit={Boolean(role) && (role === "admin" || role === "operator")}
+          canEdit={canEditRecord({
+            role,
+            userId: user?.id,
+            transaction: detail,
+          })}
           isAdmin={Boolean(isAdmin)}
           onEdit={() => {
             setEdit(detail);
