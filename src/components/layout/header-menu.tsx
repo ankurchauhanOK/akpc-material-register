@@ -55,9 +55,15 @@ const NAV_ITEMS = (role: Role) => [
   },
 ];
 
-const MANAGEMENT_ITEMS = [
-  { label: "Reports", icon: BarChart3Icon, show: true },
-  { label: "Settings", icon: SettingsIcon, show: true },
+const MANAGEMENT_ITEMS = (role: Role) => [
+  { label: "Reports", icon: BarChart3Icon, href: null, show: true, soon: true },
+  {
+    label: "Settings",
+    icon: SettingsIcon,
+    href: "/settings",
+    show: role !== "viewer",
+    soon: false,
+  },
 ];
 
 export function HeaderMenu({
@@ -147,8 +153,30 @@ export function HeaderMenu({
           <div className="px-2 py-1 text-xs font-medium tracking-wide text-muted-foreground uppercase">
             Management
           </div>
-          {MANAGEMENT_ITEMS.map((item) => {
+          {MANAGEMENT_ITEMS(role).filter((i) => i.show).map((item) => {
             const Icon = item.icon;
+            const active = item.href === pathname;
+            if (item.href) {
+              return (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  onClick={() => setOpen(false)}
+                  className={cn(
+                    "my-0.5 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                    active
+                      ? "bg-primary/10 text-primary"
+                      : "text-foreground/80 hover:bg-muted hover:text-foreground"
+                  )}
+                >
+                  <Icon
+                    className={cn("size-5 shrink-0", active ? "text-primary" : "text-muted-foreground")}
+                  />
+                  <span className="flex-1">{item.label}</span>
+                  {active && <span className="h-2 w-2 rounded-full bg-primary" />}
+                </Link>
+              );
+            }
             return (
               <div
                 key={item.label}
