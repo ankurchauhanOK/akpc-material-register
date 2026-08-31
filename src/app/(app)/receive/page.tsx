@@ -1,11 +1,5 @@
-import { ReceiveForm } from "@/components/transactions/receive-form";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "Receive Material — AKPC Material Register" };
-
-export default function ReceivePage() {
-  return (
-    <div className="mx-auto max-w-6xl">
-      <ReceiveForm />
-    </div>
-  );
+export default function ReceiveRedirect() {
+  redirect("/components");
 }

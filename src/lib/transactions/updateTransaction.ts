@@ -10,12 +10,25 @@ export type UpdateTransactionInput = {
   totalAmount: number;
   transactionDate: string;
   challanPath: string; // "" when the challan was removed or never present
+  unitPrice?: number | null;
+  challanNumber?: string | null;
+  externalDocumentPath?: string | null;
+  partySnapshot?: {
+    name?: string | null;
+    company?: string | null;
+    location?: string | null;
+    post?: string | null;
+    contact?: string | null;
+    pincode?: string | null;
+  };
 };
 
 /**
  * Updates an EXISTING transaction row — it never inserts a new one.
  * The transaction `type` is intentionally NOT part of the input: it is
  * immutable once created (enforced in the DB and here in the UI).
+ * Preserves entered source values (unit_price / total_amount) and
+ * refreshes the party snapshot on edit.
  */
 export async function updateTransaction(
   id: string,
@@ -29,9 +42,18 @@ export async function updateTransaction(
       material_id: input.materialId,
       company_id: input.companyId,
       pieces: input.pieces,
+      unit_price: input.unitPrice ?? null,
       total_amount: input.totalAmount,
       transaction_date: input.transactionDate,
       challan_path: input.challanPath,
+      challan_number: input.challanNumber ?? null,
+      external_document_path: input.externalDocumentPath ?? null,
+      party_name: input.partySnapshot?.name ?? null,
+      party_company: input.partySnapshot?.company ?? null,
+      party_location: input.partySnapshot?.location ?? null,
+      party_post: input.partySnapshot?.post ?? null,
+      party_contact: input.partySnapshot?.contact ?? null,
+      party_pincode: input.partySnapshot?.pincode ?? null,
     })
     .eq("id", id)
     .select("*")

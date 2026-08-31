@@ -13,7 +13,7 @@ export function AppHeader({
     <header className="sticky top-0 z-10 border-b bg-white">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
         <Link
-          href="/dashboard"
+          href="/components"
           className="text-sm font-semibold tracking-tight hover:underline"
         >
           AKPC Material Register

@@ -2,47 +2,61 @@
 
 import { useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  PlusIcon,
-  PencilIcon,
-  SearchIcon,
-} from "lucide-react";
+import { PlusIcon, PencilIcon, SearchIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import type { Enums, Tables } from "@/lib/supabase/database.types";
+import {
+  COMPONENT_CATEGORIES,
+  PARTY_ROLES,
+  UNIT_LABELS,
+  UNIT_TYPES,
+  CATEGORY_LABELS,
+  ROLE_LABELS,
+} from "@/lib/supabase/types";
 
 type Material = Tables<"materials">;
 type Company = Tables<"companies">;
 type Profile = Tables<"profiles">;
 type Role = Enums<"app_role">;
+type UnitType = Enums<"unit_type">;
+type ComponentCategory = Enums<"component_category">;
+type PartyRole = Enums<"party_role">;
 
-type Tab = "materials" | "companies" | "users";
+type Tab = "components" | "parties" | "users";
 
 export function SettingsPage() {
   const { isAdmin, canManageMasters } = useAuth();
-  const [tab, setTab] = useState<Tab>("materials");
+  const [tab, setTab] = useState<Tab>("components");
 
   const tabs: { key: Tab; label: string; show: boolean }[] = [
-    { key: "materials", label: "Materials", show: canManageMasters },
-    { key: "companies", label: "Companies", show: canManageMasters },
+    { key: "components", label: "Components", show: canManageMasters },
+    { key: "parties", label: "Parties", show: canManageMasters },
     { key: "users", label: "Users & Roles", show: isAdmin },
   ];
 
   const visibleTabs = tabs.filter((t) => t.show);
   const activeTab = visibleTabs.some((t) => t.key === tab)
     ? tab
-    : visibleTabs[0]?.key ?? "materials";
+    : visibleTabs[0]?.key ?? "components";
 
   return (
     <div className="mx-auto max-w-5xl">
       <div className="mb-4">
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Manage master data and users.
+          Manage component masters and parties.
         </p>
       </div>
 
@@ -65,8 +79,8 @@ export function SettingsPage() {
         ))}
       </div>
 
-      {activeTab === "materials" && <MaterialsSection />}
-      {activeTab === "companies" && <CompaniesSection />}
+      {activeTab === "components" && <ComponentsSection />}
+      {activeTab === "parties" && <PartiesSection />}
       {activeTab === "users" && <UsersSection />}
 
       {visibleTabs.length === 0 && (
@@ -78,9 +92,9 @@ export function SettingsPage() {
   );
 }
 
-// ---------------- Materials ----------------
+// ---------------- Components (Component Master) ----------------
 
-function MaterialsSection() {
+function ComponentsSection() {
   const qc = useQueryClient();
   const inval = () => qc.invalidateQueries({ queryKey: ["materials"] });
 
@@ -100,8 +114,12 @@ function MaterialsSection() {
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Material | null>(null);
   const [creating, setCreating] = useState(false);
-  const [name, setName] = useState("");
-  const [code, setCode] = useState("");
+  const [form, setForm] = useState({
+    name: "",
+    unit: "pieces" as UnitType,
+    category: "" as ComponentCategory | "",
+    partCode: "",
+  });
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -112,45 +130,50 @@ function MaterialsSection() {
   function openCreate() {
     setCreating(true);
     setEditing(null);
-    setName("");
-    setCode("");
+    setForm({ name: "", unit: "pieces", category: "", partCode: "" });
     setErr(null);
   }
   function openEdit(m: Material) {
     setEditing(m);
     setCreating(false);
-    setName(m.name);
-    setCode(m.code ?? "");
+    setForm({
+      name: m.name,
+      unit: m.unit,
+      category: m.category ?? "",
+      partCode: m.part_code ?? "",
+    });
     setErr(null);
   }
 
   async function save() {
     if (saving) return;
-    if (!name.trim()) {
-      setErr("Name is required.");
+    if (!form.name.trim()) {
+      setErr("Component name is required.");
       return;
     }
     setSaving(true);
     setErr(null);
     try {
       const supabase = createClient();
+      const payload = {
+        name: form.name.trim(),
+        unit: form.unit,
+        category: form.category ? (form.category as ComponentCategory) : null,
+        part_code: form.partCode.trim() || null,
+      };
       if (creating) {
-        const { error } = await supabase
-          .from("materials")
-          .insert({ name: name.trim(), code: code.trim() || null });
-        if (error) throw new Error("Could not add material.");
+        const { error } = await supabase.from("materials").insert(payload);
+        if (error) throw new Error("Could not add component.");
       } else if (editing) {
         const { error } = await supabase
           .from("materials")
-          .update({ name: name.trim(), code: code.trim() || null })
+          .update(payload)
           .eq("id", editing.id);
-        if (error) throw new Error("Could not update material.");
+        if (error) throw new Error("Could not update component.");
       }
       inval();
       setCreating(false);
       setEditing(null);
-      setName("");
-      setCode("");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not save.");
     } finally {
@@ -173,38 +196,76 @@ function MaterialsSection() {
         <div className="relative w-full max-w-xs">
           <SearchIcon className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-400" />
           <Input
-            placeholder="Search materials…"
+            placeholder="Search components…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="h-10 pl-9"
           />
         </div>
         <Button onClick={openCreate}>
-          <PlusIcon /> Add material
+          <PlusIcon /> Add component
         </Button>
       </div>
 
-      {/* create/edit form */}
       {(creating || editing) && (
         <div className="mb-4 rounded-xl border bg-white p-4">
           <h3 className="mb-3 text-sm font-semibold">
-            {creating ? "Add material" : "Edit material"}
+            {creating ? "Add component" : "Edit component"}
           </h3>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Name">
+            <Field label="Component Name">
               <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. MS Bracket"
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="e.g. Magnetic Bolt"
                 className="h-10"
                 autoFocus
               />
             </Field>
-            <Field label="Code (optional)">
+            <Field label="Unit">
+              <Select
+                value={form.unit}
+                onValueChange={(v) => setForm({ ...form, unit: v as UnitType })}
+              >
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder="Select unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  {UNIT_TYPES.map((u) => (
+                    <SelectItem key={u} value={u}>
+                      {UNIT_LABELS[u]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Category">
+              <Select
+                value={form.category}
+                onValueChange={(v) =>
+                  setForm({ ...form, category: v as ComponentCategory | "" })
+                }
+              >
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder="Pending" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">
+                    <span className="text-zinc-400">Pending</span>
+                  </SelectItem>
+                  {COMPONENT_CATEGORIES.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {CATEGORY_LABELS[c]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Part Code">
               <Input
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                placeholder="e.g. MS-001"
+                value={form.partCode}
+                onChange={(e) => setForm({ ...form, partCode: e.target.value })}
+                placeholder="Optional"
                 className="h-10"
               />
             </Field>
@@ -231,7 +292,7 @@ function MaterialsSection() {
         <p className="p-6 text-center text-sm text-zinc-500">Loading…</p>
       ) : filtered.length === 0 ? (
         <p className="rounded-lg border p-8 text-center text-sm text-zinc-400">
-          No materials found.
+          No components found.
         </p>
       ) : (
         <ul className="divide-y rounded-xl border bg-white">
@@ -245,7 +306,11 @@ function MaterialsSection() {
             >
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium">{m.name}</p>
-                {m.code && <p className="truncate text-xs text-zinc-500">{m.code}</p>}
+                <p className="truncate text-xs text-zinc-500">
+                  {UNIT_LABELS[m.unit]}
+                  {m.category ? ` · ${CATEGORY_LABELS[m.category]}` : " · Pending"}
+                  {m.part_code ? ` · ${m.part_code}` : ""}
+                </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <Button
@@ -267,9 +332,9 @@ function MaterialsSection() {
   );
 }
 
-// ---------------- Companies ----------------
+// ---------------- Parties (Party Master) ----------------
 
-function CompaniesSection() {
+function PartiesSection() {
   const qc = useQueryClient();
   const inval = () => qc.invalidateQueries({ queryKey: ["companies"] });
 
@@ -289,7 +354,14 @@ function CompaniesSection() {
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Company | null>(null);
   const [creating, setCreating] = useState(false);
-  const [name, setName] = useState("");
+  const [form, setForm] = useState({
+    name: "",
+    location: "",
+    post: "",
+    contact: "",
+    pincode: "",
+    role: "" as PartyRole | "",
+  });
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -300,42 +372,61 @@ function CompaniesSection() {
   function openCreate() {
     setCreating(true);
     setEditing(null);
-    setName("");
+    setForm({
+      name: "",
+      location: "",
+      post: "",
+      contact: "",
+      pincode: "",
+      role: "",
+    });
     setErr(null);
   }
   function openEdit(c: Company) {
     setEditing(c);
     setCreating(false);
-    setName(c.name);
+    setForm({
+      name: c.name,
+      location: c.location ?? "",
+      post: c.post ?? "",
+      contact: c.contact ?? "",
+      pincode: c.pincode ?? "",
+      role: c.role ?? "",
+    });
     setErr(null);
   }
 
   async function save() {
     if (saving) return;
-    if (!name.trim()) {
-      setErr("Name is required.");
+    if (!form.name.trim()) {
+      setErr("Party name is required.");
       return;
     }
     setSaving(true);
     setErr(null);
     try {
       const supabase = createClient();
+      const payload = {
+        name: form.name.trim(),
+        location: form.location.trim() || null,
+        post: form.post.trim() || null,
+        contact: form.contact.trim() || null,
+        pincode: form.pincode.trim() || null,
+        role: form.role ? (form.role as PartyRole) : null,
+      };
       if (creating) {
-        const { error } = await supabase
-          .from("companies")
-          .insert({ name: name.trim() });
-        if (error) throw new Error("Could not add company.");
+        const { error } = await supabase.from("companies").insert(payload);
+        if (error) throw new Error("Could not add party.");
       } else if (editing) {
         const { error } = await supabase
           .from("companies")
-          .update({ name: name.trim() })
+          .update(payload)
           .eq("id", editing.id);
-        if (error) throw new Error("Could not update company.");
+        if (error) throw new Error("Could not update party.");
       }
       inval();
       setCreating(false);
       setEditing(null);
-      setName("");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Could not save.");
     } finally {
@@ -358,31 +449,85 @@ function CompaniesSection() {
         <div className="relative w-full max-w-xs">
           <SearchIcon className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-zinc-400" />
           <Input
-            placeholder="Search companies…"
+            placeholder="Search parties…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="h-10 pl-9"
           />
         </div>
         <Button onClick={openCreate}>
-          <PlusIcon /> Add company
+          <PlusIcon /> Add party
         </Button>
       </div>
 
       {(creating || editing) && (
         <div className="mb-4 rounded-xl border bg-white p-4">
           <h3 className="mb-3 text-sm font-semibold">
-            {creating ? "Add company" : "Edit company"}
+            {creating ? "Add party" : "Edit party"}
           </h3>
-          <Field label="Name">
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. ABC Ltd"
-              className="h-10"
-              autoFocus
-            />
-          </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Name">
+              <Input
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="e.g. Rahul Sharma"
+                className="h-10"
+                autoFocus
+              />
+            </Field>
+            <Field label="Role">
+              <Select
+                value={form.role}
+                onValueChange={(v) => setForm({ ...form, role: v as PartyRole | "" })}
+              >
+                <SelectTrigger className="h-10">
+                  <SelectValue placeholder="Unclassified" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">
+                    <span className="text-zinc-400">Unclassified</span>
+                  </SelectItem>
+                  {PARTY_ROLES.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {ROLE_LABELS[r]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Location">
+              <Input
+                value={form.location}
+                onChange={(e) => setForm({ ...form, location: e.target.value })}
+                placeholder="e.g. Rudrapur"
+                className="h-10"
+              />
+            </Field>
+            <Field label="Post / Designation">
+              <Input
+                value={form.post}
+                onChange={(e) => setForm({ ...form, post: e.target.value })}
+                placeholder="e.g. Purchase Manager"
+                className="h-10"
+              />
+            </Field>
+            <Field label="Contact Number">
+              <Input
+                value={form.contact}
+                onChange={(e) => setForm({ ...form, contact: e.target.value })}
+                placeholder="e.g. 98xxxxxxx"
+                className="h-10"
+              />
+            </Field>
+            <Field label="Pincode">
+              <Input
+                value={form.pincode}
+                onChange={(e) => setForm({ ...form, pincode: e.target.value })}
+                placeholder="e.g. 263153"
+                className="h-10"
+              />
+            </Field>
+          </div>
           {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
           <div className="mt-3 flex gap-2">
             <Button onClick={save} disabled={saving}>
@@ -405,7 +550,7 @@ function CompaniesSection() {
         <p className="p-6 text-center text-sm text-zinc-500">Loading…</p>
       ) : filtered.length === 0 ? (
         <p className="rounded-lg border p-8 text-center text-sm text-zinc-400">
-          No companies found.
+          No parties found.
         </p>
       ) : (
         <ul className="divide-y rounded-xl border bg-white">
@@ -417,7 +562,14 @@ function CompaniesSection() {
                 !c.is_active && "opacity-50"
               )}
             >
-              <p className="truncate text-sm font-medium">{c.name}</p>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{c.name}</p>
+                <p className="truncate text-xs text-zinc-500">
+                  {c.role ? ROLE_LABELS[c.role] : "Unclassified"}
+                  {c.location ? ` · ${c.location}` : ""}
+                  {c.contact ? ` · ${c.contact}` : ""}
+                </p>
+              </div>
               <div className="flex shrink-0 items-center gap-2">
                 <Button
                   variant="outline"
@@ -536,13 +688,7 @@ function UsersSection() {
   );
 }
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: ReactNode;
-}) {
+function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="grid gap-1.5">
       <Label className="text-sm font-medium">{label}</Label>

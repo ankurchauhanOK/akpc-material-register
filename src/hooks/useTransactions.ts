@@ -1,16 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import type { Tables } from "@/lib/supabase/database.types";
-import type { TransactionType } from "@/lib/supabase/types";
+import type { TransactionType, UnitType } from "@/lib/supabase/types";
 
 type Transaction = Tables<"transactions">;
 type Material = Tables<"materials">;
 type Company = Tables<"companies">;
 
-/** Transaction enriched with resolved master names for display. */
+/** Transaction enriched with resolved master names + unit for display. */
 export type TransactionWithNames = Transaction & {
   material_name: string;
   company_name: string;
+  material_unit: UnitType | null;
 };
 
 /**
@@ -26,16 +27,18 @@ export function useTransactions() {
       const { data, error } = await supabase
         .from("transactions")
         .select(
-          "*, materials!transactions_material_id_fkey(name), companies!transactions_company_id_fkey(name)"
+          "*"
         )
         .order("transaction_date", { ascending: false })
         .order("created_at", { ascending: false });
 
       if (error) throw error;
 
+      // Resolve names + unit from the FK references returned by PostgREST.
+      // PostgREST embeds { materials: {...}, companies: {...} } relations.
       return (data ?? []).map((row) => {
         const r = row as Transaction & {
-          materials: { name: string } | null;
+          materials: { name: string; unit: UnitType | null } | null;
           companies: { name: string } | null;
         };
         return {
@@ -45,14 +48,24 @@ export function useTransactions() {
           material_id: r.material_id,
           company_id: r.company_id,
           pieces: r.pieces,
+          unit_price: r.unit_price,
           total_amount: r.total_amount,
           transaction_date: r.transaction_date,
           challan_path: r.challan_path,
+          challan_number: r.challan_number,
+          external_document_path: r.external_document_path,
+          party_name: r.party_name,
+          party_company: r.party_company,
+          party_location: r.party_location,
+          party_post: r.party_post,
+          party_contact: r.party_contact,
+          party_pincode: r.party_pincode,
           created_by: r.created_by,
           created_at: r.created_at,
           updated_at: r.updated_at,
           deleted_at: r.deleted_at,
           material_name: r.materials?.name ?? "—",
+          material_unit: r.materials?.unit ?? null,
           company_name: r.companies?.name ?? "—",
         };
       });

@@ -16,51 +16,111 @@ export type Database = {
     Tables: {
       companies: {
         Row: {
+          contact: string | null
           created_at: string
           id: string
           is_active: boolean
+          location: string | null
           name: string
+          pincode: string | null
+          post: string | null
+          role: Database["public"]["Enums"]["party_role"] | null
           updated_at: string
         }
         Insert: {
+          contact?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
+          location?: string | null
           name: string
+          pincode?: string | null
+          post?: string | null
+          role?: Database["public"]["Enums"]["party_role"] | null
           updated_at?: string
         }
         Update: {
+          contact?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
+          location?: string | null
           name?: string
+          pincode?: string | null
+          post?: string | null
+          role?: Database["public"]["Enums"]["party_role"] | null
           updated_at?: string
         }
         Relationships: []
       }
+      component_parties: {
+        Row: {
+          component_id: string
+          created_at: string
+          id: string
+          party_id: string
+        }
+        Insert: {
+          component_id: string
+          created_at?: string
+          id?: string
+          party_id: string
+        }
+        Update: {
+          component_id?: string
+          created_at?: string
+          id?: string
+          party_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "component_parties_component_id_fkey"
+            columns: ["component_id"]
+            isOneToOne: false
+            referencedRelation: "materials"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "component_parties_party_id_fkey"
+            columns: ["party_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       materials: {
         Row: {
+          category: Database["public"]["Enums"]["component_category"] | null
           code: string | null
           created_at: string
           id: string
           is_active: boolean
           name: string
+          part_code: string | null
+          unit: Database["public"]["Enums"]["unit_type"]
           updated_at: string
         }
         Insert: {
+          category?: Database["public"]["Enums"]["component_category"] | null
           code?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
           name: string
+          part_code?: string | null
+          unit?: Database["public"]["Enums"]["unit_type"]
           updated_at?: string
         }
         Update: {
+          category?: Database["public"]["Enums"]["component_category"] | null
           code?: string | null
           created_at?: string
           id?: string
           is_active?: boolean
           name?: string
+          part_code?: string | null
+          unit?: Database["public"]["Enums"]["unit_type"]
           updated_at?: string
         }
         Relationships: []
@@ -94,48 +154,75 @@ export type Database = {
       }
       transactions: {
         Row: {
+          challan_number: string | null
           challan_path: string
           company_id: string
           created_at: string
           created_by: string | null
           deleted_at: string | null
+          external_document_path: string | null
           id: string
           material_id: string
+          party_company: string | null
+          party_contact: string | null
+          party_location: string | null
+          party_name: string | null
+          party_pincode: string | null
+          party_post: string | null
           pieces: number
           total_amount: number
           transaction_date: string
           transaction_number: string
           type: Database["public"]["Enums"]["transaction_type"]
+          unit_price: number | null
           updated_at: string
         }
         Insert: {
+          challan_number?: string | null
           challan_path: string
           company_id: string
           created_at?: string
           created_by?: string | null
           deleted_at?: string | null
+          external_document_path?: string | null
           id?: string
           material_id: string
+          party_company?: string | null
+          party_contact?: string | null
+          party_location?: string | null
+          party_name?: string | null
+          party_pincode?: string | null
+          party_post?: string | null
           pieces: number
           total_amount?: number
           transaction_date?: string
           transaction_number: string
           type: Database["public"]["Enums"]["transaction_type"]
+          unit_price?: number | null
           updated_at?: string
         }
         Update: {
+          challan_number?: string | null
           challan_path?: string
           company_id?: string
           created_at?: string
           created_by?: string | null
           deleted_at?: string | null
+          external_document_path?: string | null
           id?: string
           material_id?: string
+          party_company?: string | null
+          party_contact?: string | null
+          party_location?: string | null
+          party_name?: string | null
+          party_pincode?: string | null
+          party_post?: string | null
           pieces?: number
           total_amount?: number
           transaction_date?: string
           transaction_number?: string
           type?: Database["public"]["Enums"]["transaction_type"]
+          unit_price?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -179,7 +266,10 @@ export type Database = {
     }
     Enums: {
       app_role: "admin" | "operator" | "viewer"
+      component_category: "direct" | "indirect"
+      party_role: "customer" | "supplier" | "both"
       transaction_type: "received" | "given"
+      unit_type: "pieces" | "kg" | "meter" | "litre" | "set"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -308,7 +398,10 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["admin", "operator", "viewer"],
+      component_category: ["direct", "indirect"],
+      party_role: ["customer", "supplier", "both"],
       transaction_type: ["received", "given"],
+      unit_type: ["pieces", "kg", "meter", "litre", "set"],
     },
   },
 } as const

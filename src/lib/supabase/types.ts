@@ -2,8 +2,37 @@ import type { Tables, Enums } from "./database.types";
 
 export type Role = Enums<"app_role">;
 export type TransactionType = Enums<"transaction_type">;
+export type UnitType = Enums<"unit_type">;
+export type ComponentCategory = Enums<"component_category">;
+export type PartyRole = Enums<"party_role">;
 
 export type Profile = Tables<"profiles">;
+export type Component = Tables<"materials">;
+export type Party = Tables<"companies">;
+export type ComponentParty = Tables<"component_parties">;
+
+export const UNIT_TYPES: UnitType[] = ["pieces", "kg", "meter", "litre", "set"];
+export const COMPONENT_CATEGORIES: ComponentCategory[] = ["direct", "indirect"];
+export const PARTY_ROLES: PartyRole[] = ["customer", "supplier", "both"];
+
+export const UNIT_LABELS: Record<UnitType, string> = {
+  pieces: "Pieces",
+  kg: "Kg",
+  meter: "Meter",
+  litre: "Litre",
+  set: "Set",
+};
+
+export const CATEGORY_LABELS: Record<ComponentCategory, string> = {
+  direct: "Direct",
+  indirect: "Indirect",
+};
+
+export const ROLE_LABELS: Record<PartyRole, string> = {
+  customer: "Customer",
+  supplier: "Supplier",
+  both: "Both",
+};
 
 // Role order ranks privilege (higher = more access).
 export const ROLE_RANK: Record<Role, number> = {

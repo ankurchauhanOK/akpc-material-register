@@ -73,16 +73,16 @@ export function DashboardPage() {
       {canCreate && (
         <div className="mb-6 grid grid-cols-2 gap-3">
           <Link
-            href="/receive"
+            href="/components"
             className="flex h-16 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-base font-semibold text-white hover:bg-emerald-700"
           >
-            <ArrowDownLeftIcon className="size-5" /> + Receive Material
+            <ArrowDownLeftIcon className="size-5" /> Receive
           </Link>
           <Link
-            href="/give"
+            href="/components"
             className="flex h-16 items-center justify-center gap-2 rounded-xl bg-amber-600 text-base font-semibold text-white hover:bg-amber-700"
           >
-            <ArrowUpRightIcon className="size-5" /> − Give Material
+            <ArrowUpRightIcon className="size-5" /> Send
           </Link>
         </div>
       )}

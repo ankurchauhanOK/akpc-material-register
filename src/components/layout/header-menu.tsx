@@ -6,8 +6,6 @@ import { useState } from "react";
 import {
   LayoutDashboardIcon,
   ScrollTextIcon,
-  ArrowDownLeftIcon,
-  ArrowUpRightIcon,
   BarChart3Icon,
   SettingsIcon,
   LogOutIcon,
@@ -28,7 +26,7 @@ import { useSignOut } from "@/lib/supabase/signout";
 
 type Role = Enums<"app_role">;
 
-const NAV_ITEMS = (role: Role) => [
+const NAV_ITEMS = () => [
   {
     label: "Dashboard",
     href: "/dashboard",
@@ -36,22 +34,16 @@ const NAV_ITEMS = (role: Role) => [
     show: true,
   },
   {
+    label: "Components",
+    href: "/components",
+    icon: BoxIcon,
+    show: true,
+  },
+  {
     label: "Records",
     href: "/records",
     icon: ScrollTextIcon,
     show: true,
-  },
-  {
-    label: "Receive Material",
-    href: "/receive",
-    icon: ArrowDownLeftIcon,
-    show: role !== "viewer",
-  },
-  {
-    label: "Give Material",
-    href: "/give",
-    icon: ArrowUpRightIcon,
-    show: role !== "viewer",
   },
 ];
 
@@ -77,7 +69,7 @@ export function HeaderMenu({
   const pathname = usePathname();
   const { signOut, loading } = useSignOut();
 
-  const items = NAV_ITEMS(role).filter((i) => i.show);
+  const items = NAV_ITEMS().filter((i) => i.show);
 
   function isActive(href: string) {
     return pathname === href;

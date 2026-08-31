@@ -1,11 +1,5 @@
-import { GiveForm } from "@/components/transactions/give-form";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "Give Material — AKPC Material Register" };
-
-export default function GivePage() {
-  return (
-    <div className="mx-auto max-w-6xl">
-      <GiveForm />
-    </div>
-  );
+export default function GiveRedirect() {
+  redirect("/components");
 }
