@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { AuthProvider } from "@/hooks/useAuth";
 import { AppHeader } from "@/components/layout/app-header";
+import { SideRail } from "@/components/layout/side-rail";
+import type { Role } from "@/components/layout/nav-config";
 
 export default async function AppLayout({
   children,
@@ -33,14 +35,18 @@ export default async function AppLayout({
     redirect("/login");
   }
 
+  const role = profile.role as Role;
+
   return (
     <AuthProvider>
-      <div className="flex min-h-full flex-1 flex-col">
-        <AppHeader
-          role={profile.role}
-          userEmail={user.email}
-        />
-        <div className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</div>
+      <div className="flex min-h-screen bg-zinc-50">
+        <SideRail role={role} />
+        <div className="flex min-w-0 flex-1 flex-col">
+          <AppHeader role={role} userEmail={user.email} />
+          <main className="flex-1 px-3 py-4 sm:px-4">
+            <div className="mx-auto max-w-[1360px]">{children}</div>
+          </main>
+        </div>
       </div>
     </AuthProvider>
   );

@@ -1,27 +1,19 @@
 "use client";
 
-import { useMemo } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { ArrowDownLeftIcon, ArrowUpRightIcon } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import {
-  useTransactions,
-  summarizeMovement,
-  summarizeByMaterial,
-  type TransactionWithNames,
-} from "@/hooks/useTransactions";
-import { TypeBadge } from "@/components/records/type-badge";
-import { formatPieces } from "@/lib/format";
-
-function todayISO() {
-  const d = new Date();
-  const offset = d.getTimezoneOffset();
-  return new Date(d.getTime() - offset * 60_000).toISOString().slice(0, 10);
-}
-
-function monthPrefix() {
-  return todayISO().slice(0, 7); // YYYY-MM
-}
+import { useDashboardData, todayISO, startOfWeek, type PeriodKey } from "@/components/dashboard/dashboard-data";
+import { PeriodControl } from "@/components/dashboard/period-control";
+import { CustomRange } from "@/components/dashboard/custom-range";
+import { MasterComponents } from "@/components/dashboard/master-components";
+import { KpiCards } from "@/components/dashboard/kpi-cards";
+import { MovementTable } from "@/components/dashboard/movement-table";
+import { ActivityChart } from "@/components/dashboard/activity-chart";
+import { SpendTable } from "@/components/dashboard/spend-table";
+import { RecentDocuments } from "@/components/dashboard/recent-documents";
+import { NeedsAttention } from "@/components/dashboard/needs-attention";
 
 function timeOfDayGreeting() {
   const h = new Date().getHours();
@@ -32,155 +24,80 @@ function timeOfDayGreeting() {
 
 export function DashboardPage() {
   const { profile, role, canCreate } = useAuth();
-  const { data: rows = [], isLoading, error } = useTransactions();
+  const [period, setPeriod] = useState<PeriodKey>("month");
+  const [custom, setCustom] = useState({ start: startOfWeek(todayISO()), end: todayISO() });
 
-  const today = todayISO();
-  const month = monthPrefix();
-
-  const todayTxs = useMemo(
-    () => rows.filter((t) => t.transaction_date === today),
-    [rows, today]
-  );
-  const monthTxs = useMemo(
-    () => rows.filter((t) => t.transaction_date.startsWith(month)),
-    [rows, month]
-  );
-
-  const todayM = useMemo(() => summarizeMovement(todayTxs), [todayTxs]);
-  const monthM = useMemo(() => summarizeMovement(monthTxs), [monthTxs]);
-  const byMaterial = useMemo(
-    () => summarizeByMaterial(rows).slice(0, 6),
-    [rows]
-  );
-  const recent = useMemo(() => rows.slice(0, 5), [rows]);
+  const data = useDashboardData(period, custom);
 
   const firstName = profile?.full_name?.split(" ")[0] ?? "there";
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+    <div className="flex flex-col gap-4">
+      {/* Greeting + actions + period */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium text-muted-foreground">
+            {role ? role[0].toUpperCase() + role.slice(1) : ""} ·
+          </p>
+          <h1 className="text-[32px] leading-tight font-semibold tracking-tight text-foreground">
             {timeOfDayGreeting()}, {firstName}
           </h1>
-          <p className="mt-0.5 text-sm text-zinc-500">
-            {role ? role[0].toUpperCase() + role.slice(1) : ""} · Material dashboard
+          <p className="mt-0.5 text-[13px] text-muted-foreground">
+            Material &amp; operations overview
           </p>
         </div>
+
+        <div className="flex flex-wrap items-center gap-2.5">
+          {period === "custom" && (
+            <CustomRange
+              start={custom.start}
+              end={custom.end}
+              onChange={(s, e) => setCustom({ start: s, end: e })}
+            />
+          )}
+          <PeriodControl value={period} onChange={setPeriod} />
+          {canCreate && (
+            <div className="flex gap-2">
+              <Link
+                href="/components"
+                className="inline-flex h-10 items-center gap-1.5 rounded-[10px] bg-emerald-700 px-3.5 text-[13px] font-semibold text-white transition-colors hover:bg-emerald-800"
+              >
+                <ArrowDownLeftIcon className="size-4" /> Receive
+              </Link>
+              <Link
+                href="/components"
+                className="inline-flex h-10 items-center gap-1.5 rounded-[10px] bg-orange-600 px-3.5 text-[13px] font-semibold text-white transition-colors hover:bg-orange-700"
+              >
+                <ArrowUpRightIcon className="size-4" /> Send
+              </Link>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Quick actions (hidden for read-only viewers) */}
-      {canCreate && (
-        <div className="mb-6 grid grid-cols-2 gap-3">
-          <Link
-            href="/components"
-            className="flex h-16 items-center justify-center gap-2 rounded-xl bg-emerald-600 text-base font-semibold text-white hover:bg-emerald-700"
-          >
-            <ArrowDownLeftIcon className="size-5" /> Receive
-          </Link>
-          <Link
-            href="/components"
-            className="flex h-16 items-center justify-center gap-2 rounded-xl bg-amber-600 text-base font-semibold text-white hover:bg-amber-700"
-          >
-            <ArrowUpRightIcon className="size-5" /> Send
-          </Link>
-        </div>
-      )}
+      {/* Master Components */}
+      <MasterComponents
+        components={data.components}
+        partyCounts={data.partyCounts}
+      />
 
-      {isLoading ? (
-        <div className="rounded-xl border bg-white p-8 text-center text-sm text-zinc-500">
-          Loading dashboard…
-        </div>
-      ) : error ? (
-        <div className="rounded-xl border bg-red-50 p-8 text-center text-sm text-red-700">
-          Could not load dashboard data.
-        </div>
-      ) : (
-        <div className="grid gap-6">
-          {/* Today / month summary */}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <SummaryCard label="Received today" value={formatPieces(todayM.received)} accent="text-emerald-600" />
-            <SummaryCard label="Given today" value={formatPieces(todayM.given)} accent="text-amber-600" />
-            <SummaryCard label="Received this month" value={formatPieces(monthM.received)} accent="text-emerald-600" />
-            <SummaryCard label="Given this month" value={formatPieces(monthM.given)} accent="text-amber-600" />
-          </div>
+      {/* KPI row */}
+      <KpiCards kpis={data.kpis} />
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            {/* Net material movement */}
-            <div className="rounded-xl border bg-white">
-              <div className="border-b px-4 py-3">
-                <h2 className="text-sm font-semibold">Net material movement</h2>
-              </div>
-              {byMaterial.length === 0 ? (
-                <p className="p-6 text-sm text-zinc-400">No movement yet.</p>
-              ) : (
-                <ul className="divide-y">
-                  {byMaterial.map((m) => (
-                    <li key={m.material_id} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                      <span>{m.material_name}</span>
-                      <span className={m.net < 0 ? "font-medium text-red-600" : "font-medium text-zinc-800"}>
-                        {m.net < 0 ? "−" : "+"}
-                        {new Intl.NumberFormat("en-IN").format(Math.abs(m.net))} pcs
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-
-            {/* Recent transactions */}
-            <div className="rounded-xl border bg-white">
-              <div className="flex items-center justify-between border-b px-4 py-3">
-                <h2 className="text-sm font-semibold">Recent transactions</h2>
-                <Link href="/records" className="text-xs font-medium text-emerald-600 hover:underline">
-                  View all
-                </Link>
-              </div>
-              {recent.length === 0 ? (
-                <p className="p-6 text-sm text-zinc-400">No transactions yet.</p>
-              ) : (
-                <ul className="divide-y">
-                  {recent.map((t) => (
-                    <RecentRow key={t.id} t={t} />
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SummaryCard({
-  label,
-  value,
-  accent,
-}: {
-  label: string;
-  value: string;
-  accent?: string;
-}) {
-  return (
-    <div className="rounded-xl border bg-white p-4">
-      <p className="text-xs uppercase tracking-wide text-zinc-500">{label}</p>
-      <p className={`mt-1 text-lg font-semibold ${accent ?? "text-zinc-800"}`}>{value}</p>
-    </div>
-  );
-}
-
-function RecentRow({ t }: { t: TransactionWithNames }) {
-  return (
-    <li className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="shrink-0 font-medium text-zinc-500">{t.transaction_number}</span>
-        <TypeBadge type={t.type} />
-        <span className="truncate">{t.material_name}</span>
+      {/* Primary analytical grid */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[11fr_9fr]">
+        <MovementTable rows={data.movement} />
+        <ActivityChart points={data.activity} />
       </div>
-      <span className="shrink-0 text-muted-foreground">
-        {new Intl.NumberFormat("en-IN").format(t.pieces)} pcs
-      </span>
-    </li>
+
+      {/* Secondary grid */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <SpendTable rows={data.spend} />
+        <RecentDocuments rows={data.recent} />
+      </div>
+
+      {/* Needs Attention */}
+      <NeedsAttention issues={data.needsAttention} />
+    </div>
   );
 }
