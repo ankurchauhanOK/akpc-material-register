@@ -31,6 +31,7 @@ export type CreateReceivingDocumentInput = {
   challanNumber?: string | null;
   vehicleDetails?: string | null;
   externalDocumentPath?: string | null;
+  notes?: string | null;
   createdBy: string;
   partySnapshot?: {
     name?: string | null;
@@ -75,6 +76,7 @@ export async function createReceivingDocument(
     challan_number: input.challanNumber ?? null,
     vehicle_details: input.vehicleDetails ?? null,
     external_document_path: input.externalDocumentPath ?? null,
+    notes: input.notes ?? null,
     party_name: input.partySnapshot?.name ?? null,
     party_company: input.partySnapshot?.company ?? null,
     party_location: input.partySnapshot?.location ?? null,

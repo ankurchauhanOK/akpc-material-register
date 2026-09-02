@@ -20,7 +20,7 @@ export type ReceivingDocumentItem = Tables<"receiving_document_items">;
 export const UNIT_TYPES: UnitType[] = ["pieces", "kg", "meter", "litre", "set"];
 export const COMPONENT_CATEGORIES: ComponentCategory[] = ["direct", "indirect"];
 export const PARTY_ROLES: PartyRole[] = ["customer", "supplier", "both"];
-export const DOCUMENT_SOURCES: DocumentSource[] = ["supplier", "shop"];
+export const DOCUMENT_SOURCES: DocumentSource[] = ["supplier", "shop", "customer"];
 export const DOCUMENT_KINDS: DocumentKind[] = ["raw-material", "other"];
 export const DOCUMENT_LINE_TYPES: DocumentLineType[] = ["component", "other"];
 export const PAYMENT_STATUSES: PaymentStatus[] = ["pending", "paid"];
@@ -37,6 +37,7 @@ export const UNIT_LABELS: Record<UnitType, string> = {
 export const SOURCE_LABELS: Record<DocumentSource, string> = {
   supplier: "Supplier",
   shop: "Shop",
+  customer: "Customer",
 };
 
 export const KIND_LABELS: Record<DocumentKind, string> = {

@@ -233,6 +233,7 @@ export type Database = {
           gst_total: number
           id: string
           kind: Database["public"]["Enums"]["document_kind"]
+          notes: string | null
           party_company: string | null
           party_contact: string | null
           party_location: string | null
@@ -260,6 +261,7 @@ export type Database = {
           gst_total?: number
           id?: string
           kind: Database["public"]["Enums"]["document_kind"]
+          notes?: string | null
           party_company?: string | null
           party_contact?: string | null
           party_location?: string | null
@@ -287,6 +289,7 @@ export type Database = {
           gst_total?: number
           id?: string
           kind?: Database["public"]["Enums"]["document_kind"]
+          notes?: string | null
           party_company?: string | null
           party_contact?: string | null
           party_location?: string | null
@@ -437,7 +440,7 @@ export type Database = {
       component_category: "direct" | "indirect"
       document_kind: "raw-material" | "other"
       document_line_type: "component" | "other"
-      document_source: "supplier" | "shop"
+      document_source: "supplier" | "shop" | "customer"
       party_role: "customer" | "supplier" | "both"
       payment_status: "pending" | "paid"
       receiving_document_status: "completed" | "cancelled"
@@ -574,7 +577,7 @@ export const Constants = {
       component_category: ["direct", "indirect"],
       document_kind: ["raw-material", "other"],
       document_line_type: ["component", "other"],
-      document_source: ["supplier", "shop"],
+      document_source: ["supplier", "shop", "customer"],
       party_role: ["customer", "supplier", "both"],
       payment_status: ["pending", "paid"],
       receiving_document_status: ["completed", "cancelled"],

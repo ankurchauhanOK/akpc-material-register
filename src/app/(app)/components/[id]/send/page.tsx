@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { ComponentTransactionForm } from "@/components/transactions/component-transaction-form";
+import { SendMaterialForm } from "@/components/transactions/send-material-form";
 
 export const metadata = { title: "Send Material — AKPC Material Register" };
 
@@ -21,7 +21,7 @@ export default async function ComponentSendPage({
 
   return (
     <div className="mx-auto max-w-6xl">
-      <ComponentTransactionForm component={component} direction="given" />
+      <SendMaterialForm component={component} />
     </div>
   );
 }
