@@ -150,7 +150,7 @@ export function ChallanDocument({
       <Page size="A4" style={styles.page}>
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.brand}>AK Precise Components</Text>
+            <Text style={styles.brand}>AK Precision Components</Text>
             <Text style={styles.sub}>AKPC · Material Register</Text>
           </View>
           <View>

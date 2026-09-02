@@ -128,3 +128,25 @@
     @apply font-sans;
   }
 }
+
+/* Challan Preview: print the A4 document only, hide chrome. */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  .challan-a4 {
+    width: 210mm !important;
+    max-width: none !important;
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 12mm !important;
+  }
+  body {
+    background: #fff !important;
+  }
+}
+
+.challan-a4 {
+  @apply bg-white;
+}

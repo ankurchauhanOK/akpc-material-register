@@ -3,7 +3,7 @@
 import { useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpRightIcon, CheckIcon, RotateCcwIcon } from "lucide-react";
+import { ArrowUpRightIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   EntityCombobox,
@@ -23,7 +23,6 @@ import { createReceivingDocument } from "@/lib/transactions/createReceivingDocum
 import { formatDate, formatINR } from "@/lib/format";
 import type { Enums, Tables } from "@/lib/supabase/database.types";
 import { UNIT_TYPES, UNIT_LABELS } from "@/lib/supabase/types";
-import { renderChallanPdf } from "@/lib/challan/challan-pdf";
 
 type Component = Tables<"materials">;
 type Party = Tables<"companies">;
@@ -62,9 +61,6 @@ export function SendMaterialForm({ component }: { component: Component }) {
   const [notes, setNotes] = useState("");
 
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [saved, setSaved] = useState<
-    (Tables<"receiving_documents"> & { items: Tables<"receiving_document_items">[] }) | null
-  >(null);
   const [saving, setSaving] = useState(false);
   const submittingRef = useRef(false);
 
@@ -163,38 +159,17 @@ export function SendMaterialForm({ component }: { component: Component }) {
         ],
       });
 
-      setSaved(created);
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       queryClient.invalidateQueries({
         queryKey: ["component_parties", component.id],
       });
 
-      // Save & Generate Challan: build the on-demand A4 challan from the
-      // real saved document, then trigger a download.
-      const item = created.items[0];
-      const blob = await renderChallanPdf(
-        {
-          type: "given",
-          transaction_number: created.document_number,
-          transaction_date: created.transaction_date,
-          party_name: created.party_name,
-          party_company: created.party_company,
-          party_location: created.party_location,
-          party_contact: created.party_contact,
-          total_amount: created.total_amount,
-        } as Tables<"transactions"> & { party_name: string | null },
-        component.name,
-        UNIT_LABELS[item?.unit ?? component.unit],
-        created.items,
-        created.subtotal,
-        created.gst_total
+      // Save & Confirm Challan: persist first, then navigate to the Challan
+      // Preview page for the actual saved document. Download is an explicit
+      // user action on that page — never an automatic browser download here.
+      router.push(
+        `/components/${component.id}/documents/${created.document_number}/challan`
       );
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${created.document_number}.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
     } catch (e) {
       setErrors({
         form:
@@ -206,75 +181,6 @@ export function SendMaterialForm({ component }: { component: Component }) {
       submittingRef.current = false;
       setSaving(false);
     }
-  }
-
-  async function reChallan() {
-    if (!saved) return;
-    const item = saved.items[0];
-    const blob = await renderChallanPdf(
-      {
-        type: "given",
-        transaction_number: saved.document_number,
-        transaction_date: saved.transaction_date,
-        party_name: saved.party_name,
-        party_company: saved.party_company,
-        party_location: saved.party_location,
-        party_contact: saved.party_contact,
-        total_amount: saved.total_amount,
-      } as Tables<"transactions"> & { party_name: string | null },
-      component.name,
-      UNIT_LABELS[item?.unit ?? component.unit],
-      saved.items,
-      saved.subtotal,
-      saved.gst_total
-    );
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${saved.document_number}.pdf`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  // ----- success state -----
-  if (saved) {
-    return (
-      <div className="mx-auto max-w-md rounded-xl border bg-white p-6 text-center shadow-sm">
-        <div className="mx-auto mb-3 flex size-12 items-center justify-center rounded-full bg-amber-100 text-amber-700">
-          <CheckIcon className="size-6" />
-        </div>
-        <p className="text-sm font-medium text-zinc-600">
-          Sent · {saved.items[0]?.item_name ?? component.name}
-        </p>
-        <h2 className="mt-1 text-3xl font-semibold tracking-tight">
-          {saved.document_number}
-        </h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {selectedParty?.name ?? "—"} ·{" "}
-          {formatDate(saved.transaction_date)} ·{" "}
-          {formatINR(saved.total_amount)}
-        </p>
-
-        <div className="mt-6 grid gap-2">
-          <Button variant="outline" onClick={reChallan}>
-            <ArrowUpRightIcon />
-            Generate Challan Again
-          </Button>
-          <Button variant="outline" onClick={() => router.push("/records")}>
-            View record
-          </Button>
-          <Button
-            onClick={() => {
-              setSaved(null);
-              setPartyId(null);
-            }}
-          >
-            <RotateCcwIcon />
-            Record another
-          </Button>
-        </div>
-      </div>
-    );
   }
 
   // ----- the one-screen form -----
@@ -557,7 +463,7 @@ export function SendMaterialForm({ component }: { component: Component }) {
             disabled={saving}
             className="h-12 px-6 text-base"
           >
-            {saving ? "Saving…" : "Save & Generate Challan"}
+            {saving ? "Saving…" : "Save & Confirm Challan"}
           </Button>
         </div>
       </div>
