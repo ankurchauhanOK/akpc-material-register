@@ -116,18 +116,35 @@ const styles = StyleSheet.create({
 });
 
 type Tx = Tables<"transactions"> & { party_name: string | null };
+type DocItem = Tables<"receiving_document_items">;
 
 export function ChallanDocument({
   tx,
   componentName,
   componentUnit,
+  items,
+  subtotal,
+  gstTotal,
 }: {
   tx: Tx;
   componentName: string;
   componentUnit: string;
+  items?: DocItem[] | null;
+  subtotal?: number;
+  gstTotal?: number;
 }) {
   const isReceive = tx.type === "received";
   const partyLine = tx.party_name || tx.party_company || "—";
+  const hasItems = (items?.length ?? 0) > 0;
+
+  const unitLabel: Record<string, string> = {
+    pieces: "Pcs",
+    kg: "Kg",
+    meter: "Mtr",
+    litre: "Ltr",
+    set: "Set",
+  };
+
   return (
     <Document>
       <Page size="A4" style={styles.page}>
@@ -163,7 +180,7 @@ export function ChallanDocument({
               <Text style={styles.headText}>#</Text>
             </Text>
             <Text style={styles.cellB}>
-              <Text style={styles.headText}>Component</Text>
+              <Text style={styles.headText}>Item</Text>
             </Text>
             <Text style={styles.cellC}>
               <Text style={styles.headText}>Quantity</Text>
@@ -176,17 +193,34 @@ export function ChallanDocument({
             </Text>
           </View>
 
-          <View style={styles.row}>
-            <Text style={styles.cellA}>1</Text>
-            <Text style={styles.cellB}>{componentName}</Text>
-            <Text style={styles.cellC}>
-              {tx.pieces} {componentUnit}
-            </Text>
-            <Text style={styles.cellD}>
-              {tx.unit_price != null ? formatINR(tx.unit_price) : "—"}
-            </Text>
-            <Text style={styles.cellE}>{formatINR(tx.total_amount)}</Text>
-          </View>
+          {hasItems
+            ? items!.map((item, i) => (
+                <View style={styles.row} key={item.id}>
+                  <Text style={styles.cellA}>{i + 1}</Text>
+                  <Text style={styles.cellB}>{item.item_name}</Text>
+                  <Text style={styles.cellC}>
+                    {new Intl.NumberFormat("en-IN").format(Number(item.quantity))}{" "}
+                    {unitLabel[item.unit] ?? item.unit}
+                  </Text>
+                  <Text style={styles.cellD}>
+                    {item.unit_price != null ? formatINR(item.unit_price) : "—"}
+                  </Text>
+                  <Text style={styles.cellE}>{formatINR(item.line_total)}</Text>
+                </View>
+              ))
+            : (
+                <View style={styles.row}>
+                  <Text style={styles.cellA}>1</Text>
+                  <Text style={styles.cellB}>{componentName}</Text>
+                  <Text style={styles.cellC}>
+                    {tx.pieces} {componentUnit}
+                  </Text>
+                  <Text style={styles.cellD}>
+                    {tx.unit_price != null ? formatINR(tx.unit_price) : "—"}
+                  </Text>
+                  <Text style={styles.cellE}>{formatINR(tx.total_amount)}</Text>
+                </View>
+              )}
         </View>
 
         <View
@@ -195,14 +229,29 @@ export function ChallanDocument({
             borderTopWidth: 1,
             borderTopColor: "#999",
             paddingTop: 6,
-            flexDirection: "row",
-            justifyContent: "space-between",
+            flexDirection: "column",
+            alignItems: "flex-end",
+            gap: 2,
           }}
         >
-          <Text style={styles.value}>Total Amount</Text>
-          <Text style={{ fontSize: 13, fontWeight: "bold" }}>
-            {formatINR(tx.total_amount)}
-          </Text>
+          {hasItems && (
+            <>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", width: "50%" }}>
+                <Text style={styles.value}>Total (Excl. GST)</Text>
+                <Text style={styles.value}>{formatINR(subtotal ?? 0)}</Text>
+              </View>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", width: "50%" }}>
+                <Text style={styles.value}>Total GST</Text>
+                <Text style={styles.value}>{formatINR(gstTotal ?? 0)}</Text>
+              </View>
+            </>
+          )}
+          <View style={{ flexDirection: "row", justifyContent: "space-between", width: "50%" }}>
+            <Text style={styles.value}>Total Amount</Text>
+            <Text style={{ fontSize: 13, fontWeight: "bold" }}>
+              {formatINR(tx.total_amount)}
+            </Text>
+          </View>
         </View>
 
         <View
@@ -239,13 +288,19 @@ export function ChallanDocument({
 export async function renderChallanPdf(
   tx: Tx,
   componentName: string,
-  componentUnit: string
+  componentUnit: string,
+  items?: DocItem[] | null,
+  subtotal?: number,
+  gstTotal?: number
 ): Promise<Blob> {
   const doc = (
     <ChallanDocument
       tx={tx}
       componentName={componentName}
       componentUnit={componentUnit}
+      items={items}
+      subtotal={subtotal}
+      gstTotal={gstTotal}
     />
   );
   return pdf(doc).toBlob();

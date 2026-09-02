@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { ComponentTransactionForm } from "@/components/transactions/component-transaction-form";
+import { MultiItemReceiveForm } from "@/components/transactions/multi-item-receive-form";
 
 export const metadata = { title: "Receive Material — AKPC Material Register" };
 
@@ -19,9 +19,5 @@ export default async function ComponentReceivePage({
 
   if (!component) notFound();
 
-  return (
-    <div className="mx-auto max-w-6xl">
-      <ComponentTransactionForm component={component} direction="received" />
-    </div>
-  );
+  return <MultiItemReceiveForm component={component} />;
 }

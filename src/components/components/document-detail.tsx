@@ -13,15 +13,24 @@ import type { Tables } from "@/lib/supabase/database.types";
 
 type Material = Tables<"materials">;
 type Tx = Tables<"transactions">;
+type DocItem = Tables<"receiving_document_items">;
+
+/** A v2 receiving document (header) with its line items, or null for legacy. */
+type DocumentLike = Tx & {
+  subtotal?: number;
+  gst_total?: number;
+  items: DocItem[] | null;
+};
 
 export function DocumentDetail({
   transaction,
   component,
 }: {
-  transaction: Tx;
+  transaction: DocumentLike;
   component: Material;
 }) {
   const isReceive = transaction.type === "received";
+  const hasItems = Boolean(transaction.items);
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
@@ -43,9 +52,12 @@ export function DocumentDetail({
     setGenerating(true);
     try {
       const blob = await renderChallanPdf(
-        transaction as Tx & { party_name: string | null },
+        transaction,
         component.name,
-        UNIT_LABELS[component.unit]
+        UNIT_LABELS[component.unit],
+        hasItems ? transaction.items : null,
+        transaction.subtotal,
+        transaction.gst_total
       );
       setPdfUrl(URL.createObjectURL(blob));
     } finally {
@@ -76,7 +88,6 @@ export function DocumentDetail({
         </div>
 
         <dl className="grid gap-3 text-sm">
-          <Row label="Component" value={component.name} />
           <Row
             label={isReceive ? "Received From" : "Sent To"}
             value={transaction.party_name ?? "—"}
@@ -84,19 +95,81 @@ export function DocumentDetail({
           {transaction.party_location && (
             <Row label="Location" value={transaction.party_location} />
           )}
-          <Row
-            label="Quantity"
-            value={`${new Intl.NumberFormat("en-IN").format(transaction.pieces)} ${UNIT_LABELS[component.unit]}`}
-          />
-          {transaction.unit_price != null && (
-            <Row label="Unit Price" value={formatINR(transaction.unit_price)} />
-          )}
-          <Row label="Total Amount" value={formatINR(transaction.total_amount)} />
           {transaction.challan_number && (
             <Row label="Source Challan No." value={transaction.challan_number} />
           )}
         </dl>
       </div>
+
+      {/* Line items (v2 multi-item document) */}
+      {hasItems && (transaction.items?.length ?? 0) > 0 && (
+        <div className="mt-4 rounded-xl border bg-white">
+          <div className="border-b px-4 py-2 text-sm font-semibold">Items</div>
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                <th className="px-3 py-2 font-medium">#</th>
+                <th className="px-3 py-2 font-medium">Item</th>
+                <th className="px-3 py-2 font-medium">Unit</th>
+                <th className="px-3 py-2 text-right font-medium">Qty</th>
+                <th className="px-3 py-2 text-right font-medium">Rate (₹)</th>
+                <th className="px-3 py-2 text-right font-medium">GST%</th>
+                <th className="px-3 py-2 text-right font-medium">Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {transaction.items!.map((item, i) => (
+                <tr key={item.id}>
+                  <td className="px-3 py-2 text-sm text-muted-foreground">
+                    {String(i + 1).padStart(2, "0")}
+                  </td>
+                  <td className="px-3 py-2 text-sm font-medium">{item.item_name}</td>
+                  <td className="px-3 py-2 text-sm text-muted-foreground">
+                    {UNIT_LABELS[item.unit]}
+                  </td>
+                  <td className="px-3 py-2 text-right text-sm">
+                    {new Intl.NumberFormat("en-IN").format(Number(item.quantity))}
+                  </td>
+                  <td className="px-3 py-2 text-right text-sm">
+                    {item.unit_price != null ? formatINR(item.unit_price) : "—"}
+                  </td>
+                  <td className="px-3 py-2 text-right text-sm">
+                    {item.gst_percent}%
+                  </td>
+                  <td className="px-3 py-2 text-right text-sm font-medium">
+                    {formatINR(item.line_total)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="border-t px-4 py-3 flex flex-col gap-1.5">
+            <Row label="Total (Excl. GST)" value={formatINR(transaction.subtotal ?? 0)} />
+            <Row label="Total GST" value={formatINR(transaction.gst_total ?? 0)} />
+            <Row
+              label="Total (Incl. GST)"
+              value={formatINR(transaction.total_amount)}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Legacy single-item document */}
+      {!hasItems && (
+        <div className="mt-4 rounded-xl border bg-white p-5">
+          <dl className="grid gap-3 text-sm">
+            <Row label="Component" value={component.name} />
+            <Row
+              label="Quantity"
+              value={`${new Intl.NumberFormat("en-IN").format(transaction.pieces)} ${UNIT_LABELS[component.unit]}`}
+            />
+            {(transaction.unit_price ?? null) != null && (
+              <Row label="Unit Price" value={formatINR(transaction.unit_price ?? 0)} />
+            )}
+            <Row label="Total Amount" value={formatINR(transaction.total_amount)} />
+          </dl>
+        </div>
+      )}
 
       {/* Generated AKPC challan */}
       <div className="mt-4 rounded-xl border bg-white p-4">

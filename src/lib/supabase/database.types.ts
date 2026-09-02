@@ -152,6 +152,174 @@ export type Database = {
         }
         Relationships: []
       }
+      receiving_document_items: {
+        Row: {
+          component_id: string | null
+          created_at: string
+          document_id: string
+          gst_amount: number
+          gst_percent: number
+          id: string
+          item_name: string
+          line_no: number
+          line_total: number
+          line_type: Database["public"]["Enums"]["document_line_type"]
+          quantity: number
+          subtotal: number
+          unit: Database["public"]["Enums"]["unit_type"]
+          unit_price: number | null
+          updated_at: string
+        }
+        Insert: {
+          component_id?: string | null
+          created_at?: string
+          document_id: string
+          gst_amount?: number
+          gst_percent?: number
+          id?: string
+          item_name: string
+          line_no: number
+          line_total?: number
+          line_type: Database["public"]["Enums"]["document_line_type"]
+          quantity: number
+          subtotal?: number
+          unit: Database["public"]["Enums"]["unit_type"]
+          unit_price?: number | null
+          updated_at?: string
+        }
+        Update: {
+          component_id?: string | null
+          created_at?: string
+          document_id?: string
+          gst_amount?: number
+          gst_percent?: number
+          id?: string
+          item_name?: string
+          line_no?: number
+          line_total?: number
+          line_type?: Database["public"]["Enums"]["document_line_type"]
+          quantity?: number
+          subtotal?: number
+          unit?: Database["public"]["Enums"]["unit_type"]
+          unit_price?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receiving_document_items_component_id_fkey"
+            columns: ["component_id"]
+            isOneToOne: false
+            referencedRelation: "materials"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receiving_document_items_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "receiving_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      receiving_documents: {
+        Row: {
+          challan_number: string | null
+          company_id: string
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          document_number: string
+          external_document_path: string | null
+          gst_total: number
+          id: string
+          kind: Database["public"]["Enums"]["document_kind"]
+          party_company: string | null
+          party_contact: string | null
+          party_location: string | null
+          party_name: string | null
+          party_pincode: string | null
+          party_post: string | null
+          payment_status: Database["public"]["Enums"]["payment_status"] | null
+          source: Database["public"]["Enums"]["document_source"]
+          status: Database["public"]["Enums"]["receiving_document_status"]
+          subtotal: number
+          total_amount: number
+          transaction_date: string
+          type: Database["public"]["Enums"]["transaction_type"]
+          updated_at: string
+          vehicle_details: string | null
+        }
+        Insert: {
+          challan_number?: string | null
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          document_number: string
+          external_document_path?: string | null
+          gst_total?: number
+          id?: string
+          kind: Database["public"]["Enums"]["document_kind"]
+          party_company?: string | null
+          party_contact?: string | null
+          party_location?: string | null
+          party_name?: string | null
+          party_pincode?: string | null
+          party_post?: string | null
+          payment_status?: Database["public"]["Enums"]["payment_status"] | null
+          source: Database["public"]["Enums"]["document_source"]
+          status?: Database["public"]["Enums"]["receiving_document_status"]
+          subtotal?: number
+          total_amount?: number
+          transaction_date?: string
+          type: Database["public"]["Enums"]["transaction_type"]
+          updated_at?: string
+          vehicle_details?: string | null
+        }
+        Update: {
+          challan_number?: string | null
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          deleted_at?: string | null
+          document_number?: string
+          external_document_path?: string | null
+          gst_total?: number
+          id?: string
+          kind?: Database["public"]["Enums"]["document_kind"]
+          party_company?: string | null
+          party_contact?: string | null
+          party_location?: string | null
+          party_name?: string | null
+          party_pincode?: string | null
+          party_post?: string | null
+          payment_status?: Database["public"]["Enums"]["payment_status"] | null
+          source?: Database["public"]["Enums"]["document_source"]
+          status?: Database["public"]["Enums"]["receiving_document_status"]
+          subtotal?: number
+          total_amount?: number
+          transaction_date?: string
+          type?: Database["public"]["Enums"]["transaction_type"]
+          updated_at?: string
+          vehicle_details?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "receiving_documents_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "receiving_documents_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       transactions: {
         Row: {
           challan_number: string | null
@@ -267,7 +435,12 @@ export type Database = {
     Enums: {
       app_role: "admin" | "operator" | "viewer"
       component_category: "direct" | "indirect"
+      document_kind: "raw-material" | "other"
+      document_line_type: "component" | "other"
+      document_source: "supplier" | "shop"
       party_role: "customer" | "supplier" | "both"
+      payment_status: "pending" | "paid"
+      receiving_document_status: "completed" | "cancelled"
       transaction_type: "received" | "given"
       unit_type: "pieces" | "kg" | "meter" | "litre" | "set"
     }
@@ -399,7 +572,12 @@ export const Constants = {
     Enums: {
       app_role: ["admin", "operator", "viewer"],
       component_category: ["direct", "indirect"],
+      document_kind: ["raw-material", "other"],
+      document_line_type: ["component", "other"],
+      document_source: ["supplier", "shop"],
       party_role: ["customer", "supplier", "both"],
+      payment_status: ["pending", "paid"],
+      receiving_document_status: ["completed", "cancelled"],
       transaction_type: ["received", "given"],
       unit_type: ["pieces", "kg", "meter", "litre", "set"],
     },

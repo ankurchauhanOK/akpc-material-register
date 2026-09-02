@@ -5,15 +5,26 @@ export type TransactionType = Enums<"transaction_type">;
 export type UnitType = Enums<"unit_type">;
 export type ComponentCategory = Enums<"component_category">;
 export type PartyRole = Enums<"party_role">;
+export type DocumentSource = Enums<"document_source">;
+export type DocumentKind = Enums<"document_kind">;
+export type DocumentLineType = Enums<"document_line_type">;
+export type PaymentStatus = Enums<"payment_status">;
 
 export type Profile = Tables<"profiles">;
 export type Component = Tables<"materials">;
 export type Party = Tables<"companies">;
 export type ComponentParty = Tables<"component_parties">;
+export type ReceivingDocument = Tables<"receiving_documents">;
+export type ReceivingDocumentItem = Tables<"receiving_document_items">;
 
 export const UNIT_TYPES: UnitType[] = ["pieces", "kg", "meter", "litre", "set"];
 export const COMPONENT_CATEGORIES: ComponentCategory[] = ["direct", "indirect"];
 export const PARTY_ROLES: PartyRole[] = ["customer", "supplier", "both"];
+export const DOCUMENT_SOURCES: DocumentSource[] = ["supplier", "shop"];
+export const DOCUMENT_KINDS: DocumentKind[] = ["raw-material", "other"];
+export const DOCUMENT_LINE_TYPES: DocumentLineType[] = ["component", "other"];
+export const PAYMENT_STATUSES: PaymentStatus[] = ["pending", "paid"];
+export const GST_PERCENTS: number[] = [0, 5, 12, 18, 28];
 
 export const UNIT_LABELS: Record<UnitType, string> = {
   pieces: "Pieces",
@@ -21,6 +32,21 @@ export const UNIT_LABELS: Record<UnitType, string> = {
   meter: "Meter",
   litre: "Litre",
   set: "Set",
+};
+
+export const SOURCE_LABELS: Record<DocumentSource, string> = {
+  supplier: "Supplier",
+  shop: "Shop",
+};
+
+export const KIND_LABELS: Record<DocumentKind, string> = {
+  "raw-material": "Raw Material",
+  other: "Other",
+};
+
+export const PAYMENT_LABELS: Record<PaymentStatus, string> = {
+  pending: "Pending",
+  paid: "Paid",
 };
 
 export const CATEGORY_LABELS: Record<ComponentCategory, string> = {
