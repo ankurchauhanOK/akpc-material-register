@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ArrowDownLeftIcon,
   ArrowUpRightIcon,
+  ChevronLeftIcon,
   PlusIcon,
   FolderOpenIcon,
   SearchIcon,
@@ -69,6 +70,14 @@ export function ComponentDashboard({ component }: { component: Material }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Mobile back link (mobile only; desktop relies on the rail/nav). */}
+      <Link
+        href="/components"
+        className="inline-flex items-center gap-1 text-[13px] font-medium text-muted-foreground lg:hidden"
+      >
+        <ChevronLeftIcon className="size-4" /> Components
+      </Link>
+
       {/* Component identity header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
@@ -92,30 +101,43 @@ export function ComponentDashboard({ component }: { component: Material }) {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Actions are always visible so the page remains usable; Receive/Send
-              are disabled (not hidden) for read-only viewers. */}
+        {/* Desktop actions (rail present at lg+). Receive/Send only; Add Party
+            lives inside the Parties card. Receive/Send are disabled (not hidden)
+            for read-only viewers. */}
+        <div className="hidden items-center gap-2 lg:flex">
           <Link
             href={`/components/${component.id}/receive`}
             aria-disabled={!canCreate}
-            className={`inline-flex h-[42px] items-center gap-1.5 rounded-[12px] px-3.5 text-[13px] font-semibold text-white transition-colors ${canCreate ? "bg-emerald-700 hover:bg-emerald-800" : "pointer-events-none bg-emerald-700/50 text-white/70"}`}
+            className={`inline-flex h-[42px] items-center gap-1.5 rounded-[12px] px-3.5 text-[13px] font-semibold text-white transition-colors ${canCreate ? "bg-akpc-receive hover:brightness-110" : "pointer-events-none bg-akpc-receive/50 text-white/70"}`}
           >
             <ArrowDownLeftIcon className="size-4" /> Receive
           </Link>
           <Link
             href={`/components/${component.id}/send`}
             aria-disabled={!canCreate}
-            className={`inline-flex h-[42px] items-center gap-1.5 rounded-[12px] px-3.5 text-[13px] font-semibold text-white transition-colors ${canCreate ? "bg-orange-600 hover:bg-orange-700" : "pointer-events-none bg-orange-600/50 text-white/70"}`}
+            className={`inline-flex h-[42px] items-center gap-1.5 rounded-[12px] px-3.5 text-[13px] font-semibold text-white transition-colors ${canCreate ? "bg-akpc-send hover:brightness-110" : "pointer-events-none bg-akpc-send/50 text-white/70"}`}
           >
             <ArrowUpRightIcon className="size-4" /> Send
           </Link>
-          <Link
-            href="/settings"
-            className="inline-flex h-[42px] items-center gap-1.5 rounded-[12px] border border-border bg-white px-3.5 text-[13px] font-semibold text-foreground transition-colors hover:bg-muted"
-          >
-            <PlusIcon className="size-4" /> Add Party
-          </Link>
         </div>
+      </div>
+
+      {/* Mobile primary actions: two equal, thumb-reachable 46px CTAs. */}
+      <div className="grid grid-cols-2 gap-2 lg:hidden">
+        <Link
+          href={`/components/${component.id}/receive`}
+          aria-disabled={!canCreate}
+          className={`flex min-h-[46px] items-center justify-center gap-2 rounded-[14px] px-4 text-[14px] font-semibold text-white transition-colors ${canCreate ? "bg-akpc-receive hover:brightness-110" : "pointer-events-none bg-akpc-receive/50 text-white/70"}`}
+        >
+          <ArrowDownLeftIcon className="size-4" /> Receive
+        </Link>
+        <Link
+          href={`/components/${component.id}/send`}
+          aria-disabled={!canCreate}
+          className={`flex min-h-[46px] items-center justify-center gap-2 rounded-[14px] px-4 text-[14px] font-semibold text-white transition-colors ${canCreate ? "bg-akpc-send hover:brightness-110" : "pointer-events-none bg-akpc-send/50 text-white/70"}`}
+        >
+          <ArrowUpRightIcon className="size-4" /> Send
+        </Link>
       </div>
 
       {/* Top information row */}
@@ -208,14 +230,14 @@ export function ComponentDashboard({ component }: { component: Material }) {
             <FolderOpenIcon className="size-4 text-muted-foreground" />
             Document Center
           </h2>
-          <div className="flex items-center gap-2">
-            <div className="relative">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative sm:w-52">
               <SearchIcon className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search documents…"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="h-9 pl-8 w-52"
+                className="h-9 w-full pl-8 sm:w-52"
                 aria-label="Search documents"
               />
             </div>
@@ -224,7 +246,7 @@ export function ComponentDashboard({ component }: { component: Material }) {
               <select
                 value={type}
                 onChange={(e) => setType(e.target.value as FilterType)}
-                className="h-9 rounded-[8px] border border-border bg-white pl-8 pr-7 text-[13px] text-foreground"
+                className="h-9 w-full rounded-[8px] border border-border bg-white pl-8 pr-7 text-[13px] text-foreground sm:w-auto"
                 aria-label="Filter by type"
               >
                 <option value="all">All types</option>
@@ -238,20 +260,20 @@ export function ComponentDashboard({ component }: { component: Material }) {
         {isLoading ? (
           <p className="p-8 text-center text-sm text-muted-foreground">Loading documents…</p>
         ) : filtered.length === 0 ? (
-          <div className="p-10 text-center">
-            <FolderOpenIcon className="mx-auto mb-2 size-8 text-zinc-300" />
+          <div className="p-6 text-center lg:p-10">
+            <FolderOpenIcon className="mx-auto mb-2 size-7 text-zinc-300 lg:size-8" />
             <p className="text-sm text-muted-foreground">No documents for this component.</p>
             {canCreate && (
               <div className="mt-3 flex gap-2">
                 <Link
                   href={`/components/${component.id}/receive`}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-[10px] bg-emerald-700 px-3 text-[13px] font-semibold text-white"
+                  className="inline-flex h-11 items-center gap-1.5 rounded-[12px] bg-akpc-receive px-3 text-[13px] font-semibold text-white"
                 >
                   <ArrowDownLeftIcon className="size-4" /> Receive
                 </Link>
                 <Link
                   href={`/components/${component.id}/send`}
-                  className="inline-flex h-9 items-center gap-1.5 rounded-[10px] bg-orange-600 px-3 text-[13px] font-semibold text-white"
+                  className="inline-flex h-11 items-center gap-1.5 rounded-[12px] bg-akpc-send px-3 text-[13px] font-semibold text-white"
                 >
                   <ArrowUpRightIcon className="size-4" /> Send
                 </Link>
@@ -260,8 +282,8 @@ export function ComponentDashboard({ component }: { component: Material }) {
           </div>
         ) : (
           <>
-            {/* Desktop table */}
-            <div className="overflow-x-auto lg:block">
+            {/* Desktop table — hidden below lg (mobile uses the card list below). */}
+            <div className="hidden overflow-x-auto lg:block">
               <table className="w-full text-left border-collapse min-w-[760px]">
                 <thead>
                   <tr className="border-b border-border text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
