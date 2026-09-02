@@ -153,3 +153,10 @@
 .challan-a4 {
   @apply bg-white;
 }
+
+/* Mobile bottom-nav safe area padding for notched iPhones. */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .mobile-bottom-nav {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
