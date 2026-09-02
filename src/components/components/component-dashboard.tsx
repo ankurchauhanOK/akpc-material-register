@@ -7,19 +7,35 @@ import {
   ArrowUpRightIcon,
   PlusIcon,
   FolderOpenIcon,
+  SearchIcon,
+  FilterIcon,
+  UsersIcon,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { useTransactions } from "@/hooks/useTransactions";
+import { useTransactions, summarizeMovement } from "@/hooks/useTransactions";
 import { useComponentParties } from "@/hooks/useMasters";
 import { Input } from "@/components/ui/input";
-import { TypeBadge } from "@/components/records/type-badge";
-import { formatDate, formatINR } from "@/lib/format";
+import { formatINR } from "@/lib/format";
 import type { Enums, Tables } from "@/lib/supabase/database.types";
-import { UNIT_LABELS, CATEGORY_LABELS } from "@/lib/supabase/types";
+import { UNIT_LABELS, CATEGORY_LABELS, ROLE_LABELS } from "@/lib/supabase/types";
 
 type Material = Tables<"materials">;
 type ComponentCategory = Enums<"component_category">;
+type PartyRole = Enums<"party_role">;
 type FilterType = "all" | "received" | "given";
+
+function formatPieces(n: number): string {
+  return `${new Intl.NumberFormat("en-IN").format(n)} pcs`;
+}
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase();
+}
 
 export function ComponentDashboard({ component }: { component: Material }) {
   const { canCreate } = useAuth();
@@ -28,175 +44,351 @@ export function ComponentDashboard({ component }: { component: Material }) {
 
   const [search, setSearch] = useState("");
   const [type, setType] = useState<FilterType>("all");
-  const [partyId, setPartyId] = useState<string>("");
 
   const rows = useMemo(
     () => allRows.filter((t) => t.material_id === component.id),
     [allRows, component.id]
   );
 
-  // distinct parties that have moved with this component (from history)
-  const historyParties = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const t of rows) map.set(t.company_id, t.company_name);
-    return [...map.entries()].map(([id, name]) => ({ id, name }));
-  }, [rows]);
+  const movement = useMemo(() => summarizeMovement(rows), [rows]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((t) => {
       if (type !== "all" && t.type !== type) return false;
-      if (partyId && t.company_id !== partyId) return false;
       if (q) {
-        const hay = `${t.transaction_number} ${t.company_name} ${t.challan_number ?? ""}`.toLowerCase();
+        const hay = `${t.transaction_number} ${t.company_name} ${t.party_name ?? ""} ${t.challan_number ?? ""}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
     });
-  }, [rows, search, type, partyId]);
+  }, [rows, search, type]);
+
+  const showAllParties = parties.length > 4;
+  const visibleParties = showAllParties ? parties.slice(0, 4) : parties;
 
   return (
-    <div className="mx-auto max-w-5xl">
-      {/* Header */}
-      <div className="mb-5 rounded-xl border bg-white p-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">{component.name}</h1>
-            <p className="mt-1 text-sm text-zinc-500">
-              Unit: {UNIT_LABELS[component.unit]}
-              {component.category
-                ? ` · ${CATEGORY_LABELS[component.category as ComponentCategory]}`
-                : " · Category pending"}
-              {component.part_code ? ` · Part: ${component.part_code}` : ""}
-              {!component.is_active && " · Inactive"}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Quick actions */}
-      <div className="mb-5 grid grid-cols-3 gap-2">
-        <Link
-          href={`/components/${component.id}/receive`}
-          className="flex h-14 items-center justify-center gap-1.5 rounded-xl bg-emerald-600 text-sm font-semibold text-white hover:bg-emerald-700"
-        >
-          <ArrowDownLeftIcon className="size-4" /> Receive
-        </Link>
-        <Link
-          href={`/components/${component.id}/send`}
-          className="flex h-14 items-center justify-center gap-1.5 rounded-xl bg-amber-600 text-sm font-semibold text-white hover:bg-amber-700"
-        >
-          <ArrowUpRightIcon className="size-4" /> Send
-        </Link>
-        <Link
-          href="/settings"
-          className="flex h-14 items-center justify-center gap-1.5 rounded-xl border text-sm font-semibold hover:bg-muted"
-        >
-          <PlusIcon className="size-4" /> Add Party
-        </Link>
-      </div>
-      {!canCreate && (
-        <p className="mb-5 -mt-3 text-xs text-zinc-400">
-          You have read-only access. Receive/Send require an operator or admin account.
-        </p>
-      )}
-
-      {/* Parties */}
-      <div className="mb-5 rounded-xl border bg-white">
-        <div className="border-b px-4 py-3">
-          <h2 className="text-sm font-semibold">Parties</h2>
-        </div>
-        {parties.length === 0 ? (
-          <p className="p-5 text-sm text-zinc-400">
-            No parties linked yet. Parties appear here once you record a movement with them.
+    <div className="flex flex-col gap-4">
+      {/* Component identity header */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="flex items-baseline gap-2 text-[26px] leading-tight font-semibold tracking-tight text-foreground">
+            {component.name}
+            {component.part_code && (
+              <span className="text-[16px] font-medium text-muted-foreground">
+                {component.part_code}
+              </span>
+            )}
+          </h1>
+          <p className="mt-1 text-[12px] font-semibold tracking-wide text-muted-foreground uppercase">
+            {component.category
+              ? CATEGORY_LABELS[component.category as ComponentCategory]
+              : "Category pending"}{" "}
+            <span className="text-muted-foreground/70">·</span>{" "}
+            {UNIT_LABELS[component.unit]}
+            {!component.is_active && (
+              <span className="text-muted-foreground/70"> · Inactive</span>
+            )}
           </p>
-        ) : (
-          <ul className="divide-y">
-            {parties.map((cp) => (
-              <li key={cp.party_id} className="flex items-center justify-between px-4 py-2.5 text-sm">
-                <span className="font-medium">{cp.party?.name ?? "—"}</span>
-                {cp.party?.location && (
-                  <span className="text-xs text-zinc-500">{cp.party.location}</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Actions are always visible so the page remains usable; Receive/Send
+              are disabled (not hidden) for read-only viewers. */}
+          <Link
+            href={`/components/${component.id}/receive`}
+            aria-disabled={!canCreate}
+            className={`inline-flex h-[42px] items-center gap-1.5 rounded-[12px] px-3.5 text-[13px] font-semibold text-white transition-colors ${canCreate ? "bg-emerald-700 hover:bg-emerald-800" : "pointer-events-none bg-emerald-700/50 text-white/70"}`}
+          >
+            <ArrowDownLeftIcon className="size-4" /> Receive
+          </Link>
+          <Link
+            href={`/components/${component.id}/send`}
+            aria-disabled={!canCreate}
+            className={`inline-flex h-[42px] items-center gap-1.5 rounded-[12px] px-3.5 text-[13px] font-semibold text-white transition-colors ${canCreate ? "bg-orange-600 hover:bg-orange-700" : "pointer-events-none bg-orange-600/50 text-white/70"}`}
+          >
+            <ArrowUpRightIcon className="size-4" /> Send
+          </Link>
+          <Link
+            href="/settings"
+            className="inline-flex h-[42px] items-center gap-1.5 rounded-[12px] border border-border bg-white px-3.5 text-[13px] font-semibold text-foreground transition-colors hover:bg-muted"
+          >
+            <PlusIcon className="size-4" /> Add Party
+          </Link>
+        </div>
       </div>
 
-      {/* Documents */}
-      <div className="rounded-xl border bg-white">
-        <div className="border-b px-4 py-3">
-          <h2 className="text-sm font-semibold">Documents</h2>
-        </div>
-        <div className="grid gap-2 border-b p-3 sm:grid-cols-3">
-          <Input
-            placeholder="Search number, party, challan…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-10"
-          />
-          <select
-            value={type}
-            onChange={(e) => setType(e.target.value as FilterType)}
-            className="h-10 rounded-lg border bg-white px-3 text-sm"
-          >
-            <option value="all">Receive / Send</option>
-            <option value="received">Received</option>
-            <option value="given">Sent</option>
-          </select>
-          <select
-            value={partyId}
-            onChange={(e) => setPartyId(e.target.value)}
-            className="h-10 rounded-lg border bg-white px-3 text-sm"
-          >
-            <option value="">All parties</option>
-            {historyParties.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+      {/* Top information row */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[9fr_11fr]">
+        {/* Movement Summary */}
+        <section className="rounded-[16px] border border-border bg-white p-4">
+          <h2 className="flex items-center gap-1.5 text-[15px] font-semibold text-foreground">
+            <UsersIcon className="size-4 text-muted-foreground" />
+            Movement Summary
+          </h2>
+          <div className="mt-2 flex items-center justify-center">
+            <div className="flex-1 text-center">
+              <p className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                Total Received
+              </p>
+              <p className="mt-1 text-[20px] font-semibold text-emerald-700">
+                {formatPieces(movement.received)}
+              </p>
+            </div>
+            <span className="mx-2 h-10 w-px bg-border" />
+            <div className="flex-1 text-center">
+              <p className="text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                Total Sent
+              </p>
+              <p className="mt-1 text-[20px] font-semibold text-orange-600">
+                {formatPieces(movement.given)}
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* Parties */}
+        <section className="rounded-[16px] border border-border bg-white p-4">
+          <div className="flex items-center justify-between">
+            <h2 className="flex items-center gap-1.5 text-[15px] font-semibold text-foreground">
+              <UsersIcon className="size-4 text-muted-foreground" />
+              Parties
+            </h2>
+            <Link
+              href="/settings"
+              className="inline-flex items-center gap-1 text-[12px] font-semibold text-emerald-700 hover:underline"
+            >
+              <PlusIcon className="size-3.5" /> Add Party
+            </Link>
+          </div>
+          {visibleParties.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border bg-white/60 p-4 text-center">
+              <p className="text-sm text-muted-foreground">No parties linked yet.</p>
+              <p className="mt-1 text-xs text-muted-foreground/80">
+                Add a party in Settings to link them here.
+              </p>
+            </div>
+          ) : (
+            <ul className="mt-2 divide-y divide-border">
+              {visibleParties.map((cp) => {
+                const party = cp.party;
+                return (
+                  <li key={cp.party_id} className="flex items-center gap-2.5 py-1.5">
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded bg-zinc-100 text-[11px] font-semibold text-muted-foreground">
+                      {party?.name ? initials(party.name) : "?"}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground">
+                      {party?.name ?? "—"}
+                    </span>
+                    <span className="shrink-0 text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+                      {party?.role
+                        ? ROLE_LABELS[party.role as PartyRole]
+                        : "Unclassified"}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {showAllParties && (
+            <Link
+              href="/settings"
+              className="mt-2 inline-flex items-center text-[12px] font-medium text-emerald-700 hover:underline"
+            >
+              View All Parties →
+            </Link>
+          )}
+        </section>
+      </div>
+
+      {/* Document Center */}
+      <section className="rounded-[16px] border border-border bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
+          <h2 className="flex items-center gap-1.5 text-[15px] font-semibold text-foreground">
+            <FolderOpenIcon className="size-4 text-muted-foreground" />
+            Document Center
+          </h2>
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <SearchIcon className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Search documents…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-9 pl-8 w-52"
+                aria-label="Search documents"
+              />
+            </div>
+            <div className="relative">
+              <FilterIcon className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value as FilterType)}
+                className="h-9 rounded-[8px] border border-border bg-white pl-8 pr-7 text-[13px] text-foreground"
+                aria-label="Filter by type"
+              >
+                <option value="all">All types</option>
+                <option value="received">Receive</option>
+                <option value="given">Send</option>
+              </select>
+            </div>
+          </div>
         </div>
 
         {isLoading ? (
-          <p className="p-8 text-center text-sm text-zinc-500">Loading documents…</p>
+          <p className="p-8 text-center text-sm text-muted-foreground">Loading documents…</p>
         ) : filtered.length === 0 ? (
           <div className="p-10 text-center">
             <FolderOpenIcon className="mx-auto mb-2 size-8 text-zinc-300" />
-            <p className="text-sm text-zinc-500">No documents for this component.</p>
+            <p className="text-sm text-muted-foreground">No documents for this component.</p>
+            {canCreate && (
+              <div className="mt-3 flex gap-2">
+                <Link
+                  href={`/components/${component.id}/receive`}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-[10px] bg-emerald-700 px-3 text-[13px] font-semibold text-white"
+                >
+                  <ArrowDownLeftIcon className="size-4" /> Receive
+                </Link>
+                <Link
+                  href={`/components/${component.id}/send`}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-[10px] bg-orange-600 px-3 text-[13px] font-semibold text-white"
+                >
+                  <ArrowUpRightIcon className="size-4" /> Send
+                </Link>
+              </div>
+            )}
           </div>
         ) : (
-          <ul className="divide-y">
-            {filtered.map((t) => (
-              <li key={t.id} className="flex items-center gap-3 px-4 py-3">
-                <div className="min-w-0 flex-1">
+          <>
+            {/* Desktop table */}
+            <div className="overflow-x-auto lg:block">
+              <table className="w-full text-left border-collapse min-w-[760px]">
+                <thead>
+                  <tr className="border-b border-border text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                    <th className="px-4 py-2.5 font-medium">Document ID</th>
+                    <th className="px-4 py-2.5 font-medium">Date</th>
+                    <th className="px-4 py-2.5 font-medium">Type</th>
+                    <th className="px-4 py-2.5 font-medium">Party</th>
+                    <th className="px-4 py-2.5 text-right font-medium">Qty</th>
+                    <th className="px-4 py-2.5 text-right font-medium">Amount</th>
+                    <th className="px-4 py-2.5" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {filtered.map((t) => (
+                    <tr key={t.id} className="h-[44px] hover:bg-muted/40">
+                      <td className="px-4 py-2 font-medium text-foreground">
+                        {t.transaction_number}
+                      </td>
+                      <td className="px-4 py-2 text-[13px] text-muted-foreground">
+                        {formatDate(t.transaction_date)}
+                      </td>
+                      <td className="px-4 py-2 text-[13px]">
+                        <span
+                          className={`inline-flex items-center gap-1 ${
+                            t.type === "received"
+                              ? "text-emerald-700"
+                              : "text-orange-600"
+                          }`}
+                        >
+                          {t.type === "received" ? (
+                            <ArrowDownLeftIcon className="size-3.5" />
+                          ) : (
+                            <ArrowUpRightIcon className="size-3.5" />
+                          )}
+                          {t.type === "received" ? "Receive" : "Send"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-[13px] text-foreground">
+                        {t.party_name || t.company_name}
+                      </td>
+                      <td
+                        className={`px-4 py-2 text-right font-medium ${
+                          t.type === "received"
+                            ? "text-emerald-700"
+                            : "text-orange-600"
+                        }`}
+                      >
+                        {t.type === "received" ? "+" : "−"}
+                        {new Intl.NumberFormat("en-IN").format(t.pieces)}
+                      </td>
+                      <td className="px-4 py-2 text-right text-[13px] text-foreground">
+                        {t.total_amount > 0 ? formatINR(t.total_amount) : "—"}
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <Link
+                          href={`/components/${component.id}/documents/${t.transaction_number}`}
+                          className="text-[12px] font-medium text-emerald-700 hover:underline"
+                        >
+                          View challan
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile cards */}
+            <ul className="divide-y divide-border lg:hidden">
+              {filtered.map((t) => (
+                <li key={t.id} className="px-4 py-3">
                   <div className="flex items-center gap-2">
-                    <TypeBadge type={t.type} />
-                    <span className="truncate text-sm font-medium">{t.transaction_number}</span>
+                    <span
+                      className={`flex size-7 shrink-0 items-center justify-center rounded-lg ${
+                        t.type === "received"
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-orange-50 text-orange-600"
+                      }`}
+                    >
+                      {t.type === "received" ? (
+                        <ArrowDownLeftIcon className="size-3.5" />
+                      ) : (
+                        <ArrowUpRightIcon className="size-3.5" />
+                      )}
+                    </span>
+                    <span className="flex-1 truncate text-[13px] font-semibold text-foreground">
+                      {t.transaction_number}
+                    </span>
+                    <span
+                      className={`text-[13px] font-medium ${
+                        t.type === "received"
+                          ? "text-emerald-700"
+                          : "text-orange-600"
+                      }`}
+                    >
+                      {t.type === "received" ? "+" : "−"}
+                      {new Intl.NumberFormat("en-IN").format(t.pieces)}
+                    </span>
                   </div>
-                  <p className="mt-0.5 truncate text-xs text-zinc-500">
-                    {t.company_name} · {formatDate(t.transaction_date)} ·{" "}
-                    {t.challan_number ? `Challan ${t.challan_number} · ` : ""}
-                    {t.pieces} {t.material_unit ?? component.unit}
-                  </p>
-                </div>
-                <div className="shrink-0 text-right">
-                  {t.total_amount > 0 && (
-                    <p className="text-sm font-medium">{formatINR(t.total_amount)}</p>
-                  )}
+                  <div className="mt-1 flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                    <span>{formatDate(t.transaction_date)}</span>
+                    <span className="text-muted-foreground/60">·</span>
+                    <span className="truncate">{t.party_name || t.company_name}</span>
+                    <span className="text-muted-foreground/60">·</span>
+                    {t.total_amount > 0 ? (
+                      <span className="font-medium">{formatINR(t.total_amount)}</span>
+                    ) : (
+                      <span>—</span>
+                    )}
+                  </div>
                   <Link
                     href={`/components/${component.id}/documents/${t.transaction_number}`}
-                    className="text-xs font-medium text-emerald-600 hover:underline"
+                    className="mt-1 inline-block text-[12px] font-medium text-emerald-700"
                   >
-                    View challan
+                    View challan →
                   </Link>
-                </div>
-              </li>
-            ))}
-          </ul>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
-      </div>
+      </section>
     </div>
   );
+}
+
+function formatDate(date: string): string {
+  const d = new Date(date + (date.length === 10 ? "T00:00:00" : ""));
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
 }

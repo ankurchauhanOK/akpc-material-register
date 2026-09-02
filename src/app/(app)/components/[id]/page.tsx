@@ -20,9 +20,5 @@ export default async function ComponentPage({
 
   if (error || !component) notFound();
 
-  return (
-    <div className="mx-auto max-w-6xl">
-      <ComponentDashboard component={component} />
-    </div>
-  );
+  return <ComponentDashboard component={component} />;
 }
