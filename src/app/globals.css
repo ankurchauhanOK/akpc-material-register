@@ -154,6 +154,15 @@
   @apply bg-white;
 }
 
+/* Hide scrollbar on horizontal scroll containers. */
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* Mobile bottom-nav safe area padding for notched iPhones. */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .mobile-bottom-nav {
