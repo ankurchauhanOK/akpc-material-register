@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { FileDownIcon, FileTextIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TypeBadge } from "@/components/records/type-badge";
@@ -9,6 +8,7 @@ import { renderChallanPdf } from "@/lib/challan/challan-pdf";
 import { createSignedChallanUrl } from "@/lib/supabase/storage";
 import { formatDate, formatINR } from "@/lib/format";
 import { UNIT_LABELS } from "@/lib/supabase/types";
+import { useMobileHeaderTitle } from "@/components/layout/mobile-header-context";
 import type { Tables } from "@/lib/supabase/database.types";
 
 type Material = Tables<"materials">;
@@ -34,6 +34,12 @@ export function DocumentDetail({
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const { setTitle } = useMobileHeaderTitle();
+
+  useEffect(() => {
+    setTitle(transaction.transaction_number);
+    return () => setTitle(null);
+  }, [transaction.transaction_number, setTitle]);
 
   useEffect(() => {
     const path = transaction.external_document_path || transaction.challan_path;
@@ -69,13 +75,6 @@ export function DocumentDetail({
 
   return (
     <div className="mx-auto max-w-xl">
-      <Link
-        href={`/components/${component.id}`}
-        className="mb-3 inline-block text-sm font-medium text-emerald-600 hover:underline"
-      >
-        ← {component.name}
-      </Link>
-
       <div className="rounded-xl border bg-white p-5">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">

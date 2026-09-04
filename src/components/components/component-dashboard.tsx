@@ -1,11 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowDownLeftIcon,
   ArrowUpRightIcon,
-  ChevronLeftIcon,
   PlusIcon,
   FolderOpenIcon,
   SearchIcon,
@@ -15,6 +14,7 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { useTransactions, summarizeMovement } from "@/hooks/useTransactions";
 import { useComponentParties } from "@/hooks/useMasters";
+import { useMobileHeaderTitle } from "@/components/layout/mobile-header-context";
 import { Input } from "@/components/ui/input";
 import { formatINR } from "@/lib/format";
 import type { Enums, Tables } from "@/lib/supabase/database.types";
@@ -42,6 +42,12 @@ export function ComponentDashboard({ component }: { component: Material }) {
   const { canCreate } = useAuth();
   const { data: allRows = [], isLoading } = useTransactions();
   const { items: parties } = useComponentParties(component.id);
+  const { setTitle } = useMobileHeaderTitle();
+
+  useEffect(() => {
+    setTitle(component.name);
+    return () => setTitle(null);
+  }, [component.name, setTitle]);
 
   const [search, setSearch] = useState("");
   const [type, setType] = useState<FilterType>("all");
@@ -70,14 +76,6 @@ export function ComponentDashboard({ component }: { component: Material }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Mobile back link (mobile only; desktop relies on the rail/nav). */}
-      <Link
-        href="/components"
-        className="inline-flex items-center gap-1 text-[13px] font-medium text-muted-foreground lg:hidden"
-      >
-        <ChevronLeftIcon className="size-4" /> Components
-      </Link>
-
       {/* Component identity header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
