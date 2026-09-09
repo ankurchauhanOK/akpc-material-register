@@ -92,6 +92,20 @@ function newLine(lineNo: number): {
 
 type Line = ReturnType<typeof newLine>;
 
+export type LineCalc = {
+  subtotal: number;
+  gstAmount: number;
+  lineTotal: number;
+};
+
+const lineCalc = (line: Pick<Line, "quantity" | "unitPrice" | "gstPercent">): LineCalc => {
+  const qty = num(line.quantity);
+  const rate = line.unitPrice.trim() ? num(line.unitPrice) : 0;
+  const subtotal = qty * rate;
+  const gstAmount = subtotal * (line.gstPercent / 100);
+  return { subtotal, gstAmount, lineTotal: subtotal + gstAmount };
+};
+
 export function MultiItemReceiveForm({ component }: { component: Component }) {
   const router = useRouter();
   const { user, canCreate } = useAuth();
@@ -133,18 +147,6 @@ export function MultiItemReceiveForm({ component }: { component: Component }) {
   });
 
   // ----- per-line financial calculation (immediate, purely client-side) -----
-  function lineCalc(line: Line): {
-    subtotal: number;
-    gstAmount: number;
-    lineTotal: number;
-  } {
-    const qty = num(line.quantity);
-    const rate = line.unitPrice.trim() ? num(line.unitPrice) : 0;
-    const subtotal = qty * rate;
-    const gstAmount = subtotal * (line.gstPercent / 100);
-    return { subtotal, gstAmount, lineTotal: subtotal + gstAmount };
-  }
-
   const docTotals = useMemo(() => {
     let subtotal = 0;
     let gstTotal = 0;
@@ -490,167 +492,17 @@ export function MultiItemReceiveForm({ component }: { component: Component }) {
           </p>
         ) : null}
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="border-b text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-                <th className="px-3 py-2 font-medium">#</th>
-                <th className="px-3 py-2 font-medium">Item ID</th>
-                <th className="px-3 py-2 font-medium">Item Name</th>
-                <th className="px-3 py-2 text-right font-medium">Qty</th>
-                <th className="px-3 py-2 font-medium">Unit</th>
-                <th className="px-3 py-2 text-right font-medium">Rate (₹)</th>
-                <th className="px-3 py-2 font-medium">GST%</th>
-                <th className="px-3 py-2 text-right font-medium">Total (Excl. GST)</th>
-                <th className="px-3 py-2 text-right font-medium">Total Amount</th>
-                <th className="px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {lines.map((line) => {
-                const calc = lineCalc(line);
-                return (
-                  <tr key={line.id} className="hover:bg-muted/40">
-                    <td className="px-3 py-2 text-sm text-muted-foreground">
-                      {String(line.lineNo).padStart(2, "0")}
-                    </td>
-                    <td className="px-3 py-2 text-sm text-muted-foreground">
-                      AUTO
-                    </td>
-                    <td className="px-3 py-2 min-w-[220px]">
-                      {/* line_type toggle + name picker/input */}
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateLine(line.id, (l) => ({
-                              ...l,
-                              lineType: l.lineType === "component" ? "other" : "component",
-                              componentId:
-                                l.lineType === "component" ? null : l.componentId,
-                              itemName: l.lineType === "component" ? "" : l.itemName,
-                            }))
-                          }
-                          className={`shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
-                            line.lineType === "component"
-                              ? "bg-emerald-50 text-emerald-700"
-                              : "bg-zinc-100 text-muted-foreground"
-                          }`}
-                          title="Toggle component / other"
-                        >
-                          {line.lineType === "component" ? "Component" : "Other"}
-                        </button>
-                        {line.lineType === "component" ? (
-                          <EntityCombobox
-                            items={components.map(toPicker)}
-                            selectedId={line.componentId}
-                            placeholder="Search item..."
-                            searchPlaceholder="Search component..."
-                            emptyText="No components found."
-                            createLabel=""
-                            canCreate={false}
-                            onSelect={(it) =>
-                              updateLine(line.id, (l) => ({
-                                ...l,
-                                componentId: it.id,
-                                itemName: it.name,
-                              }))
-                            }
-                            onCreate={async () => {
-                              throw new Error("not allowed");
-                            }}
-                          />
-                        ) : (
-                          <Input
-                            value={line.itemName}
-                            onChange={(e) =>
-                              updateLine(line.id, (l) => ({ ...l, itemName: e.target.value }))
-                            }
-                            placeholder="Describe item..."
-                          />
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2 w-[110px] text-right">
-                      <Input
-                        inputMode="decimal"
-                        placeholder="0"
-                        value={line.quantity}
-                        onChange={(e) =>
-                          updateLine(line.id, (l) => ({ ...l, quantity: e.target.value }))
-                        }
-                        className="h-8 text-right"
-                      />
-                    </td>
-                    <td className="px-3 py-2 w-[100px]">
-                      <select
-                        value={line.unit}
-                        onChange={(e) =>
-                          updateLine(line.id, (l) => ({ ...l, unit: e.target.value as UnitType }))
-                        }
-                        className="h-8 w-full rounded-lg border border-border bg-white px-2 text-sm"
-                      >
-                        {UNIT_TYPES.map((u) => (
-                          <option key={u} value={u}>
-                            {UNIT_LABELS[u]}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2 w-[110px] text-right">
-                      <InputGroup>
-                        <InputGroupAddon align="inline-start">₹</InputGroupAddon>
-                        <InputGroupInput
-                          inputMode="decimal"
-                          placeholder="0.00"
-                          value={line.unitPrice}
-                          onChange={(e) =>
-                            updateLine(line.id, (l) => ({ ...l, unitPrice: e.target.value }))
-                          }
-                        />
-                      </InputGroup>
-                    </td>
-                    <td className="px-3 py-2 w-[100px]">
-                      <select
-                        value={String(line.gstPercent)}
-                        onChange={(e) =>
-                          updateLine(line.id, (l) => ({
-                            ...l,
-                            gstPercent: Number(e.target.value) || 0,
-                          }))
-                        }
-                        className="h-8 w-full rounded-lg border border-border bg-white px-2 text-sm"
-                      >
-                        {GST_PERCENTS.map((g) => (
-                          <option key={g} value={g}>
-                            {g}%
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="px-3 py-2 text-right text-sm font-medium">
-                      {formatINR(calc.subtotal)}
-                    </td>
-                    <td className="px-3 py-2 text-right text-sm font-semibold text-emerald-700">
-                      {formatINR(calc.lineTotal)}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      {lines.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeLine(line.id)}
-                          className="p-1.5 text-muted-foreground hover:text-red-600 opacity-60 hover:opacity-100"
-                          title="Remove item"
-                        >
-                          <Trash2Icon className="size-4" />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="grid gap-3 p-4 sm:grid-cols-2 sm:items-start sm:p-5">
+          {lines.map((line) => (
+            <LineCard
+              key={line.id}
+              line={line}
+              components={components}
+              canRemove={lines.length > 1}
+              onUpdate={(fn) => updateLine(line.id, fn)}
+              onRemove={() => removeLine(line.id)}
+            />
+          ))}
         </div>
       </section>
 
@@ -738,6 +590,198 @@ export function MultiItemReceiveForm({ component }: { component: Component }) {
         ) : null}
       </div>
     </div>
+  );
+}
+
+function LineCard({
+  line,
+  components,
+  canRemove,
+  onUpdate,
+  onRemove,
+}: {
+  line: Line;
+  components: Component[];
+  canRemove: boolean;
+  onUpdate: (fn: (l: Line) => Line) => void;
+  onRemove: () => void;
+}) {
+  const calc = lineCalc(line);
+  const isComponent = line.lineType === "component";
+
+  return (
+    <article className="rounded-xl border border-border bg-white p-4">
+      <header className="mb-3 flex items-center justify-between gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+          Item {line.lineNo}
+        </span>
+        {canRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600"
+            title="Remove item"
+          >
+            <Trash2Icon className="size-4" /> Remove
+          </button>
+        )}
+      </header>
+
+      <div className="grid gap-3">
+        {/* Item / Component */}
+        <div className="grid gap-1.5">
+          <Label className="text-xs font-semibold uppercase tracking-wider">
+            Item / Component
+          </Label>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() =>
+                onUpdate((l) => ({
+                  ...l,
+                  lineType: isComponent ? "other" : "component",
+                  componentId: isComponent ? null : l.componentId,
+                  itemName: isComponent ? "" : l.itemName,
+                }))
+              }
+              className={`shrink-0 rounded-md px-2 py-1.5 text-[10px] font-semibold uppercase ${
+                isComponent
+                  ? "bg-emerald-50 text-emerald-700"
+                  : "bg-zinc-100 text-muted-foreground"
+              }`}
+              title="Toggle component / other"
+            >
+              {isComponent ? "Component" : "Other"}
+            </button>
+            <div className="min-w-0 flex-1">
+              {isComponent ? (
+                <EntityCombobox
+                  items={components.map(toPicker)}
+                  selectedId={line.componentId}
+                  placeholder="Search item..."
+                  searchPlaceholder="Search component..."
+                  emptyText="No components found."
+                  createLabel=""
+                  canCreate={false}
+                  onSelect={(it) =>
+                    onUpdate((l) => ({
+                      ...l,
+                      componentId: it.id,
+                      itemName: it.name,
+                    }))
+                  }
+                  onCreate={async () => {
+                    throw new Error("not allowed");
+                  }}
+                />
+              ) : (
+                <Input
+                  value={line.itemName}
+                  onChange={(e) =>
+                    onUpdate((l) => ({ ...l, itemName: e.target.value }))
+                  }
+                  placeholder="Describe item..."
+                  className="h-10"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Quantity | Unit */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-1.5">
+            <Label className="text-xs font-semibold uppercase tracking-wider">
+              Quantity
+            </Label>
+            <Input
+              inputMode="decimal"
+              placeholder="0"
+              value={line.quantity}
+              onChange={(e) =>
+                onUpdate((l) => ({ ...l, quantity: e.target.value }))
+              }
+              className="h-10"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label className="text-xs font-semibold uppercase tracking-wider">
+              Unit
+            </Label>
+            <select
+              value={line.unit}
+              onChange={(e) =>
+                onUpdate((l) => ({ ...l, unit: e.target.value as UnitType }))
+              }
+              className="h-10 w-full rounded-lg border border-border bg-white px-2 text-sm"
+            >
+              {UNIT_TYPES.map((u) => (
+                <option key={u} value={u}>
+                  {UNIT_LABELS[u]}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Rate | GST % */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-1.5">
+            <Label className="text-xs font-semibold uppercase tracking-wider">
+              Rate (₹)
+            </Label>
+            <InputGroup>
+              <InputGroupAddon align="inline-start">₹</InputGroupAddon>
+              <InputGroupInput
+                inputMode="decimal"
+                placeholder="0.00"
+                value={line.unitPrice}
+                onChange={(e) =>
+                  onUpdate((l) => ({ ...l, unitPrice: e.target.value }))
+                }
+              />
+            </InputGroup>
+          </div>
+          <div className="grid gap-1.5">
+            <Label className="text-xs font-semibold uppercase tracking-wider">
+              GST %
+            </Label>
+            <select
+              value={String(line.gstPercent)}
+              onChange={(e) =>
+                onUpdate((l) => ({
+                  ...l,
+                  gstPercent: Number(e.target.value) || 0,
+                }))
+              }
+              className="h-10 w-full rounded-lg border border-border bg-white px-2 text-sm"
+            >
+              {GST_PERCENTS.map((g) => (
+                <option key={g} value={g}>
+                  {g}%
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* Totals — visually separated from editable fields */}
+        <div className="rounded-lg border bg-muted/30 px-3 py-2.5">
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span className="text-muted-foreground">Total (Excl. GST)</span>
+            <span className="font-medium">{formatINR(calc.subtotal)}</span>
+          </div>
+          <div className="mt-0.5 flex items-center justify-between gap-3 text-sm">
+            <span className="font-semibold text-emerald-700">
+              Total (Incl. GST)
+            </span>
+            <span className="text-lg font-bold text-emerald-700">
+              {formatINR(calc.lineTotal)}
+            </span>
+          </div>
+        </div>
+      </div>
+    </article>
   );
 }
 
