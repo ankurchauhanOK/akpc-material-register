@@ -77,16 +77,42 @@ export async function archiveTransaction(id: string): Promise<void> {
   if (error) throw error;
 }
 
+export type DeleteTransactionTarget =
+  | { source: "transactions"; id: string }
+  | { source: "documents"; documentId: string };
+
 /**
- * Permanent (physical) DELETE of a transaction — admin only (RLS enforces).
+ * Permanent (physical) DELETE — admin only (RLS enforces per table).
  * Used in the TRIAL version. Will be replaced by archiveTransaction()
  * when the software moves to production.
+ *
+ * - legacy rows: the `transactions` row itself
+ * - v2 document rows: the document header AND all its line items
+ *   (items are deleted first — document_id FK has no ON DELETE CASCADE)
  */
-export async function deleteTransactionPermanently(id: string): Promise<void> {
+export async function deleteTransactionPermanently(
+  target: DeleteTransactionTarget
+): Promise<void> {
   const supabase = createClient();
+
+  if (target.source === "documents") {
+    const { error: itemsError } = await supabase
+      .from("receiving_document_items")
+      .delete()
+      .eq("document_id", target.documentId);
+    if (itemsError) throw itemsError;
+
+    const { error } = await supabase
+      .from("receiving_documents")
+      .delete()
+      .eq("id", target.documentId);
+    if (error) throw error;
+    return;
+  }
+
   const { error } = await supabase
     .from("transactions")
     .delete()
-    .eq("id", id);
+    .eq("id", target.id);
   if (error) throw error;
 }

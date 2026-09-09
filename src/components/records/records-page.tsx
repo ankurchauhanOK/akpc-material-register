@@ -110,7 +110,14 @@ export function RecordsPage() {
       if (deleteTarget.external_document_path) {
         removeChallan(deleteTarget.external_document_path).catch(() => {});
       }
-      await deleteTransactionPermanently(deleteTarget.id);
+      await deleteTransactionPermanently(
+        deleteTarget.source === "documents"
+          ? {
+              source: "documents",
+              documentId: deleteTarget.document_id ?? "",
+            }
+          : { source: "transactions", id: deleteTarget.id }
+      );
       setDeleteTarget(null);
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       toast.success("Transaction deleted permanently.");

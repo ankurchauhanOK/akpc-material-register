@@ -17,6 +17,10 @@ export type TransactionWithNames = Transaction & {
   material_name: string;
   company_name: string;
   material_unit: UnitType | null;
+  /** Which table this ledger row came from — drives delete routing. */
+  source: "transactions" | "documents";
+  /** For v2 rows: the owning receiving_documents.id. Null for legacy. */
+  document_id: string | null;
 };
 
 async function fetchLegacy(supabase: ReturnType<typeof createClient>): Promise<TransactionWithNames[]> {
@@ -59,6 +63,8 @@ async function fetchLegacy(supabase: ReturnType<typeof createClient>): Promise<T
       material_name: r.materials?.name ?? "—",
       material_unit: r.materials?.unit ?? null,
       company_name: r.companies?.name ?? "—",
+      source: "transactions",
+      document_id: null,
     };
   });
 }
@@ -122,6 +128,8 @@ async function fetchReceiving(
         material_name: item.item_name ?? "—",
         material_unit: item.unit,
         company_name: doc.party_company ?? doc.party_name ?? "—",
+        source: "documents",
+        document_id: doc.id,
       });
     }
   }
