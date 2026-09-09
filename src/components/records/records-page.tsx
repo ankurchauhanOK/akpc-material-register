@@ -2,9 +2,18 @@
 
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronRightIcon, FolderOpenIcon } from "lucide-react";
+import { ChevronRightIcon, FolderOpenIcon, Loader2Icon } from "lucide-react";
+import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -59,6 +68,9 @@ export function RecordsPage() {
 
   const [detail, setDetail] = useState<TransactionWithNames | null>(null);
   const [edit, setEdit] = useState<TransactionWithNames | null>(null);
+  const [archiveTarget, setArchiveTarget] =
+    useState<TransactionWithNames | null>(null);
+  const [archiving, setArchiving] = useState(false);
 
   const { data: rows = [], isLoading, error } = useTransactions();
   const { items: materials } = useActiveMaterials();
@@ -80,15 +92,24 @@ export function RecordsPage() {
     });
   }, [rows, search, type, materialId, companyId]);
 
-  async function handleArchive(t: TransactionWithNames) {
+  function handleArchive(t: TransactionWithNames) {
     if (!isAdmin) return;
-    if (!confirm(`Archive ${t.transaction_number}? This hides it from the ledger.`)) return;
+    setDetail(null);
+    setArchiveTarget(t);
+  }
+
+  async function performArchive() {
+    if (!isAdmin || archiving || !archiveTarget) return;
+    setArchiving(true);
     try {
-      await archiveTransaction(t.id);
-      setDetail(null);
+      await archiveTransaction(archiveTarget.id);
+      setArchiveTarget(null);
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
+      toast.success("Record archived");
     } catch {
-      alert("Could not archive the record.");
+      toast.error("Unable to archive the record. Please try again.");
+    } finally {
+      setArchiving(false);
     }
   }
 
@@ -261,6 +282,83 @@ export function RecordsPage() {
           }}
         />
       )}
+
+      {/* Archive confirmation */}
+      <Dialog
+        open={!!archiveTarget}
+        onOpenChange={(o) => !o && !archiving && setArchiveTarget(null)}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogTitle>Archive this transaction?</DialogTitle>
+          <DialogDescription>
+            This transaction will be removed from the active records. You can
+            no longer see it in the current records list.
+          </DialogDescription>
+
+          {archiveTarget && (
+            <div className="grid gap-3 rounded-xl border bg-muted/30 p-4 text-sm">
+              <div className="flex items-center justify-between gap-2">
+                <TypeBadge type={archiveTarget.type} />
+                <span className="font-mono text-xs text-zinc-500">
+                  {archiveTarget.transaction_number}
+                </span>
+              </div>
+              <dl className="grid gap-2">
+                <Row label="Component" value={archiveTarget.material_name} />
+                <Row
+                  label={archiveTarget.type === "received" ? "From" : "To"}
+                  value={archiveTarget.company_name}
+                />
+                <Row
+                  label="Quantity"
+                  value={`${new Intl.NumberFormat("en-IN").format(
+                    archiveTarget.pieces
+                  )} pcs`}
+                />
+                <Row
+                  label="Date"
+                  value={formatDate(archiveTarget.transaction_date)}
+                />
+              </dl>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={archiving}
+              onClick={() => setArchiveTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={archiving}
+              onClick={performArchive}
+            >
+              {archiving ? (
+                <>
+                  <Loader2Icon className="size-4 animate-spin" />
+                  Archiving…
+                </>
+              ) : (
+                "Archive"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="text-right font-medium">{value}</dd>
     </div>
   );
 }
