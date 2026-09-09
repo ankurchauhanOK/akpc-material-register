@@ -21,15 +21,21 @@ replacing the paper receiving/giving register. **This is NOT an ERP.**
   `deleteTransactionPermanently()`, `deleteCompanyPermanently()`, and
   `deleteComponentPermanently()` (all admin-only via RLS; masters already
   had DELETE policies in `0004_rls.sql`, transactions got one in
-  `20260909000000_transactions_delete_rls.sql`). `archiveTransaction()`
-  (soft-delete via `deleted_at`) is preserved in the codebase for the
-  production switch later. To revert: swap the `delete*Permanently` →
-  `archive*` functions in `records-page.tsx` / `settings-page.tsx` and
-  restore the archive RLS policy.
-- Masters linked to live records (transactions/documents) are **blocked**
-  from permanent deletion — `getComponentUsageCount()` /
-  `getCompanyUsageCount()` pre-check references and FK RESTRICT is the
-  backstop. No cascade deletion of business records.
+  `20260909000000_transactions_delete_rls.sql`). Deleting a master performs a
+  **controlled cascade** — it physically removes the parent together with its
+  dependent records (documents → line items, transactions, component_parties),
+  including cancelled/archived children that are hidden from the UI. The UI
+  **always discloses the count first** via `getCompanyUsageBreakdown()` /
+  `getComponentUsageBreakdown()` (see `master-delete-dialog.tsx` `cascadeNote`).
+  Never touches unrelated companies/components.
+  `archiveTransaction()` (soft-delete via `deleted_at`) is preserved in the
+  codebase for the production switch later. To revert for production: swap the
+  `delete*Permanently` → `archive*` functions in `records-page.tsx` /
+  `settings-page.tsx`, restore the archive RLS policy, and add a `deleted_at`
+  column to `companies` / `materials` (they have none today).
+- Master deletes are **not** blocked by references — dependents are swept
+  (disclosed to the admin first, FK NO ACTION is the safety backstop if the
+  sweep misses something).
 - Transaction `type` cannot be changed once created (DB trigger).
 - Indian formatting in the UI (₹, 29 Aug 2026), canonical numeric values in DB.
 

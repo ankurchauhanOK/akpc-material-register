@@ -29,10 +29,29 @@ import {
 import {
   deleteComponentPermanently,
   deleteCompanyPermanently,
-  getComponentUsageCount,
-  getCompanyUsageCount,
+  getComponentUsageBreakdown,
+  getCompanyUsageBreakdown,
+  type MasterUsageBreakdown,
 } from "@/lib/masters/deleteMasters";
 import { MasterDeleteDialog } from "@/components/settings/master-delete-dialog";
+
+/** Human-readable disclosure of dependent records a cascade will remove. */
+function cascadeNote(b: MasterUsageBreakdown | null): string | null {
+  if (!b) return "Checking for associated records…";
+  const total = b.documents + b.items + b.transactions;
+  if (total === 0) return null;
+  const parts: string[] = [];
+  if (b.documents)
+    parts.push(`${b.documents} document${b.documents === 1 ? "" : "s"}`);
+  if (b.items)
+    parts.push(`${b.items} line item${b.items === 1 ? "" : "s"}`);
+  if (b.transactions)
+    parts.push(`${b.transactions} transaction${b.transactions === 1 ? "" : "s"}`);
+  let msg = `This will also permanently delete its ${parts.join(", ")}.`;
+  if (b.ghostDocuments > 0)
+    msg += ` Includes ${b.ghostDocuments} cancelled or archived record${b.ghostDocuments === 1 ? "" : "s"} not visible in the ledger.`;
+  return msg;
+}
 
 type Material = Tables<"materials">;
 type Company = Tables<"companies">;
@@ -123,6 +142,8 @@ function ComponentsSection({ isAdmin }: { isAdmin: boolean }) {
   const [editing, setEditing] = useState<Material | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Material | null>(null);
+  const [deleteBreakdown, setDeleteBreakdown] =
+    useState<MasterUsageBreakdown | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState({
     name: "",
@@ -200,26 +221,32 @@ function ComponentsSection({ isAdmin }: { isAdmin: boolean }) {
     inval();
   }
 
+  async function openDelete(m: Material) {
+    setDeleteTarget(m);
+    setDeleteBreakdown(null);
+    try {
+      setDeleteBreakdown(await getComponentUsageBreakdown(m.id));
+    } catch {
+      setDeleteBreakdown({
+        documents: 0,
+        items: 0,
+        transactions: 0,
+        ghostDocuments: 0,
+      });
+    }
+  }
+
   async function performDelete() {
     if (!isAdmin || deleting || !deleteTarget) return;
     setDeleting(true);
     try {
-      const usage = await getComponentUsageCount(deleteTarget.id);
-      if (usage > 0) {
-        setDeleteTarget(null);
-        toast.error(
-          `Cannot delete this component because it is linked to ${usage} existing record${usage === 1 ? "" : "s"}. Delete those records first.`
-        );
-      } else {
-        await deleteComponentPermanently(deleteTarget.id);
-        setDeleteTarget(null);
-        inval();
-        toast.success("Component deleted permanently.");
-      }
+      await deleteComponentPermanently(deleteTarget.id);
+      setDeleteTarget(null);
+      setDeleteBreakdown(null);
+      inval();
+      toast.success("Component deleted permanently.");
     } catch {
-      toast.error(
-        "Cannot delete this component because it is linked to existing records. Delete those records first."
-      );
+      toast.error("Could not delete this component. Please try again.");
     } finally {
       setDeleting(false);
     }
@@ -363,7 +390,7 @@ function ComponentsSection({ isAdmin }: { isAdmin: boolean }) {
                     variant="ghost"
                     size="icon-sm"
                     className="text-destructive hover:text-destructive"
-                    onClick={() => setDeleteTarget(m)}
+                    onClick={() => openDelete(m)}
                   >
                     <TrashIcon /> <span className="sr-only">Delete</span>
                   </Button>
@@ -381,6 +408,7 @@ function ComponentsSection({ isAdmin }: { isAdmin: boolean }) {
         description="This will permanently remove this component master record and cannot be undone."
         loading={deleting}
         onConfirm={performDelete}
+        cascadeNote={cascadeNote(deleteBreakdown)}
         rows={
           deleteTarget
             ? [
@@ -427,6 +455,8 @@ function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
   const [editing, setEditing] = useState<Company | null>(null);
   const [creating, setCreating] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Company | null>(null);
+  const [deleteBreakdown, setDeleteBreakdown] =
+    useState<MasterUsageBreakdown | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState({
     name: "",
@@ -517,26 +547,32 @@ function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
     inval();
   }
 
+  async function openDelete(c: Company) {
+    setDeleteTarget(c);
+    setDeleteBreakdown(null);
+    try {
+      setDeleteBreakdown(await getCompanyUsageBreakdown(c.id));
+    } catch {
+      setDeleteBreakdown({
+        documents: 0,
+        items: 0,
+        transactions: 0,
+        ghostDocuments: 0,
+      });
+    }
+  }
+
   async function performDelete() {
     if (!isAdmin || deleting || !deleteTarget) return;
     setDeleting(true);
     try {
-      const usage = await getCompanyUsageCount(deleteTarget.id);
-      if (usage > 0) {
-        setDeleteTarget(null);
-        toast.error(
-          `Cannot delete this company because it is linked to ${usage} existing record${usage === 1 ? "" : "s"}. Delete those records first.`
-        );
-      } else {
-        await deleteCompanyPermanently(deleteTarget.id);
-        setDeleteTarget(null);
-        inval();
-        toast.success("Company deleted permanently.");
-      }
+      await deleteCompanyPermanently(deleteTarget.id);
+      setDeleteTarget(null);
+      setDeleteBreakdown(null);
+      inval();
+      toast.success("Company deleted permanently.");
     } catch {
-      toast.error(
-        "Cannot delete this company because it is linked to existing records. Delete those records first."
-      );
+      toast.error("Could not delete this company. Please try again.");
     } finally {
       setDeleting(false);
     }
@@ -685,7 +721,7 @@ function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
                     variant="ghost"
                     size="icon-sm"
                     className="text-destructive hover:text-destructive"
-                    onClick={() => setDeleteTarget(c)}
+                    onClick={() => openDelete(c)}
                   >
                     <TrashIcon /> <span className="sr-only">Delete</span>
                   </Button>
@@ -703,6 +739,7 @@ function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
         description="This will permanently remove this company profile and cannot be undone."
         loading={deleting}
         onConfirm={performDelete}
+        cascadeNote={cascadeNote(deleteBreakdown)}
         rows={
           deleteTarget
             ? [

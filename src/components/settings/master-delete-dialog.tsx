@@ -23,6 +23,7 @@ export function MasterDeleteDialog({
   title,
   description,
   rows,
+  cascadeNote,
   loading,
   onConfirm,
 }: {
@@ -31,6 +32,8 @@ export function MasterDeleteDialog({
   title: string;
   description: string;
   rows: DeleteDetailRow[];
+  /** Disclosure of dependent records that will be removed with the master. */
+  cascadeNote?: string | null;
   loading: boolean;
   onConfirm: () => void;
 }) {
@@ -39,6 +42,12 @@ export function MasterDeleteDialog({
       <DialogContent className="max-w-sm">
         <DialogTitle>{title}</DialogTitle>
         <DialogDescription>{description}</DialogDescription>
+
+        {cascadeNote && (
+          <p className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive-foreground">
+            {cascadeNote}
+          </p>
+        )}
 
         <div className="grid gap-3 rounded-xl border bg-muted/30 p-4 text-sm">
           <dl className="grid gap-2">
