@@ -2,7 +2,8 @@
 
 import { useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { PlusIcon, PencilIcon, SearchIcon } from "lucide-react";
+import { PlusIcon, PencilIcon, SearchIcon, TrashIcon } from "lucide-react";
+import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,13 @@ import {
   CATEGORY_LABELS,
   ROLE_LABELS,
 } from "@/lib/supabase/types";
+import {
+  deleteComponentPermanently,
+  deleteCompanyPermanently,
+  getComponentUsageCount,
+  getCompanyUsageCount,
+} from "@/lib/masters/deleteMasters";
+import { MasterDeleteDialog } from "@/components/settings/master-delete-dialog";
 
 type Material = Tables<"materials">;
 type Company = Tables<"companies">;
@@ -79,8 +87,8 @@ export function SettingsPage() {
         ))}
       </div>
 
-      {activeTab === "components" && <ComponentsSection />}
-      {activeTab === "parties" && <PartiesSection />}
+      {activeTab === "components" && <ComponentsSection isAdmin={isAdmin} />}
+      {activeTab === "parties" && <PartiesSection isAdmin={isAdmin} />}
       {activeTab === "users" && <UsersSection />}
 
       {visibleTabs.length === 0 && (
@@ -94,7 +102,7 @@ export function SettingsPage() {
 
 // ---------------- Components (Component Master) ----------------
 
-function ComponentsSection() {
+function ComponentsSection({ isAdmin }: { isAdmin: boolean }) {
   const qc = useQueryClient();
   const inval = () => qc.invalidateQueries({ queryKey: ["materials"] });
 
@@ -114,6 +122,8 @@ function ComponentsSection() {
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Material | null>(null);
   const [creating, setCreating] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Material | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState({
     name: "",
     unit: "pieces" as UnitType,
@@ -188,6 +198,31 @@ function ComponentsSection() {
       .update({ is_active: !m.is_active })
       .eq("id", m.id);
     inval();
+  }
+
+  async function performDelete() {
+    if (!isAdmin || deleting || !deleteTarget) return;
+    setDeleting(true);
+    try {
+      const usage = await getComponentUsageCount(deleteTarget.id);
+      if (usage > 0) {
+        setDeleteTarget(null);
+        toast.error(
+          `Cannot delete this component because it is linked to ${usage} existing record${usage === 1 ? "" : "s"}. Delete those records first.`
+        );
+      } else {
+        await deleteComponentPermanently(deleteTarget.id);
+        setDeleteTarget(null);
+        inval();
+        toast.success("Component deleted permanently.");
+      }
+    } catch {
+      toast.error(
+        "Cannot delete this component because it is linked to existing records. Delete those records first."
+      );
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
@@ -323,18 +358,55 @@ function ComponentsSection() {
                 <Button variant="ghost" size="icon-sm" onClick={() => openEdit(m)}>
                   <PencilIcon /> <span className="sr-only">Edit</span>
                 </Button>
+                {isAdmin && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => setDeleteTarget(m)}
+                  >
+                    <TrashIcon /> <span className="sr-only">Delete</span>
+                  </Button>
+                )}
               </div>
             </li>
           ))}
         </ul>
       )}
+
+      <MasterDeleteDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => !o && !deleting && setDeleteTarget(null)}
+        title="Delete this component permanently?"
+        description="This will permanently remove this component master record and cannot be undone."
+        loading={deleting}
+        onConfirm={performDelete}
+        rows={
+          deleteTarget
+            ? [
+                { label: "Component", value: deleteTarget.name },
+                { label: "Unit", value: UNIT_LABELS[deleteTarget.unit] },
+                {
+                  label: "Category",
+                  value: deleteTarget.category
+                    ? CATEGORY_LABELS[deleteTarget.category]
+                    : "Pending",
+                },
+                {
+                  label: "Part code",
+                  value: deleteTarget.part_code ?? "—",
+                },
+              ]
+            : []
+        }
+      />
     </div>
   );
 }
 
 // ---------------- Parties (Party Master) ----------------
 
-function PartiesSection() {
+function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
   const qc = useQueryClient();
   const inval = () => qc.invalidateQueries({ queryKey: ["companies"] });
 
@@ -354,6 +426,8 @@ function PartiesSection() {
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Company | null>(null);
   const [creating, setCreating] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Company | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState({
     name: "",
     location: "",
@@ -441,6 +515,31 @@ function PartiesSection() {
       .update({ is_active: !c.is_active })
       .eq("id", c.id);
     inval();
+  }
+
+  async function performDelete() {
+    if (!isAdmin || deleting || !deleteTarget) return;
+    setDeleting(true);
+    try {
+      const usage = await getCompanyUsageCount(deleteTarget.id);
+      if (usage > 0) {
+        setDeleteTarget(null);
+        toast.error(
+          `Cannot delete this company because it is linked to ${usage} existing record${usage === 1 ? "" : "s"}. Delete those records first.`
+        );
+      } else {
+        await deleteCompanyPermanently(deleteTarget.id);
+        setDeleteTarget(null);
+        inval();
+        toast.success("Company deleted permanently.");
+      }
+    } catch {
+      toast.error(
+        "Cannot delete this company because it is linked to existing records. Delete those records first."
+      );
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
@@ -581,11 +680,47 @@ function PartiesSection() {
                 <Button variant="ghost" size="icon-sm" onClick={() => openEdit(c)}>
                   <PencilIcon /> <span className="sr-only">Edit</span>
                 </Button>
+                {isAdmin && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => setDeleteTarget(c)}
+                  >
+                    <TrashIcon /> <span className="sr-only">Delete</span>
+                  </Button>
+                )}
               </div>
             </li>
           ))}
         </ul>
       )}
+
+      <MasterDeleteDialog
+        open={!!deleteTarget}
+        onOpenChange={(o) => !o && !deleting && setDeleteTarget(null)}
+        title="Delete this company permanently?"
+        description="This will permanently remove this company profile and cannot be undone."
+        loading={deleting}
+        onConfirm={performDelete}
+        rows={
+          deleteTarget
+            ? [
+                { label: "Name", value: deleteTarget.name },
+                {
+                  label: "Role",
+                  value: deleteTarget.role
+                    ? ROLE_LABELS[deleteTarget.role]
+                    : "Unclassified",
+                },
+                { label: "Location", value: deleteTarget.location ?? "—" },
+                { label: "Post / Designation", value: deleteTarget.post ?? "—" },
+                { label: "Contact", value: deleteTarget.contact ?? "—" },
+                { label: "Pincode", value: deleteTarget.pincode ?? "—" },
+              ]
+            : []
+        }
+      />
     </div>
   );
 }

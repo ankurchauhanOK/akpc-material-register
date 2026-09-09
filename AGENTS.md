@@ -17,11 +17,19 @@ replacing the paper receiving/giving register. **This is NOT an ERP.**
 - RLS enabled on all tables; role-based policies (`admin` / `operator` / `viewer`).
   Never expose the service-role key in frontend code.
 - Challans go to the private `challans` storage bucket; served via signed URLs.
-- **Trial mode:** Admins can permanently DELETE transactions via
-  `deleteTransactionPermanently()`. `archiveTransaction()` (soft-delete via
-  `deleted_at`) is preserved in the codebase for the production switch later.
-  To revert: swap `deleteTransactionPermanently` → `archiveTransaction` in
-  `records-page.tsx` and restore the archive RLS policy.
+- **Trial mode:** Admins can permanently DELETE transactions and masters via
+  `deleteTransactionPermanently()`, `deleteCompanyPermanently()`, and
+  `deleteComponentPermanently()` (all admin-only via RLS; masters already
+  had DELETE policies in `0004_rls.sql`, transactions got one in
+  `20260909000000_transactions_delete_rls.sql`). `archiveTransaction()`
+  (soft-delete via `deleted_at`) is preserved in the codebase for the
+  production switch later. To revert: swap the `delete*Permanently` →
+  `archive*` functions in `records-page.tsx` / `settings-page.tsx` and
+  restore the archive RLS policy.
+- Masters linked to live records (transactions/documents) are **blocked**
+  from permanent deletion — `getComponentUsageCount()` /
+  `getCompanyUsageCount()` pre-check references and FK RESTRICT is the
+  backstop. No cascade deletion of business records.
 - Transaction `type` cannot be changed once created (DB trigger).
 - Indian formatting in the UI (₹, 29 Aug 2026), canonical numeric values in DB.
 
