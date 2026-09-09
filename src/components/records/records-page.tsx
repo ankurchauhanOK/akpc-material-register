@@ -34,7 +34,8 @@ import {
 } from "@/hooks/useTransactions";
 import { TransactionEditDialog } from "@/components/records/transaction-edit-dialog";
 import { TransactionDetailDialog } from "@/components/records/transaction-detail-dialog";
-import { archiveTransaction } from "@/lib/transactions/updateTransaction";
+import { deleteTransactionPermanently } from "@/lib/transactions/updateTransaction";
+import { removeChallan } from "@/lib/supabase/storage";
 import { formatDate, formatINR, formatPieces } from "@/lib/format";
 
 type FilterType = "all" | "received" | "given";
@@ -68,9 +69,9 @@ export function RecordsPage() {
 
   const [detail, setDetail] = useState<TransactionWithNames | null>(null);
   const [edit, setEdit] = useState<TransactionWithNames | null>(null);
-  const [archiveTarget, setArchiveTarget] =
+  const [deleteTarget, setDeleteTarget] =
     useState<TransactionWithNames | null>(null);
-  const [archiving, setArchiving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const { data: rows = [], isLoading, error } = useTransactions();
   const { items: materials } = useActiveMaterials();
@@ -92,24 +93,31 @@ export function RecordsPage() {
     });
   }, [rows, search, type, materialId, companyId]);
 
-  function handleArchive(t: TransactionWithNames) {
+  function handleDelete(t: TransactionWithNames) {
     if (!isAdmin) return;
     setDetail(null);
-    setArchiveTarget(t);
+    setDeleteTarget(t);
   }
 
-  async function performArchive() {
-    if (!isAdmin || archiving || !archiveTarget) return;
-    setArchiving(true);
+  async function performDelete() {
+    if (!isAdmin || deleting || !deleteTarget) return;
+    setDeleting(true);
     try {
-      await archiveTransaction(archiveTarget.id);
-      setArchiveTarget(null);
+      // Best-effort challan cleanup before row removal
+      if (deleteTarget.challan_path) {
+        removeChallan(deleteTarget.challan_path).catch(() => {});
+      }
+      if (deleteTarget.external_document_path) {
+        removeChallan(deleteTarget.external_document_path).catch(() => {});
+      }
+      await deleteTransactionPermanently(deleteTarget.id);
+      setDeleteTarget(null);
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      toast.success("Record archived");
+      toast.success("Transaction deleted permanently.");
     } catch {
-      toast.error("Unable to archive the record. Please try again.");
+      toast.error("Unable to delete the transaction. Please try again.");
     } finally {
-      setArchiving(false);
+      setDeleting(false);
     }
   }
 
@@ -266,7 +274,7 @@ export function RecordsPage() {
             setEdit(detail);
             setDetail(null);
           }}
-          onArchive={() => handleArchive(detail)}
+          onDelete={() => handleDelete(detail)}
         />
       )}
 
@@ -283,41 +291,41 @@ export function RecordsPage() {
         />
       )}
 
-      {/* Archive confirmation */}
+      {/* Delete confirmation */}
       <Dialog
-        open={!!archiveTarget}
-        onOpenChange={(o) => !o && !archiving && setArchiveTarget(null)}
+        open={!!deleteTarget}
+        onOpenChange={(o) => !o && !deleting && setDeleteTarget(null)}
       >
         <DialogContent className="max-w-sm">
-          <DialogTitle>Archive this transaction?</DialogTitle>
+          <DialogTitle>Delete this transaction permanently?</DialogTitle>
           <DialogDescription>
-            This transaction will be removed from the active records. You can
-            no longer see it in the current records list.
+            This will permanently remove this transaction and all of its stored
+            data. This action cannot be undone.
           </DialogDescription>
 
-          {archiveTarget && (
+          {deleteTarget && (
             <div className="grid gap-3 rounded-xl border bg-muted/30 p-4 text-sm">
               <div className="flex items-center justify-between gap-2">
-                <TypeBadge type={archiveTarget.type} />
+                <TypeBadge type={deleteTarget.type} />
                 <span className="font-mono text-xs text-zinc-500">
-                  {archiveTarget.transaction_number}
+                  {deleteTarget.transaction_number}
                 </span>
               </div>
               <dl className="grid gap-2">
-                <Row label="Component" value={archiveTarget.material_name} />
+                <Row label="Component" value={deleteTarget.material_name} />
                 <Row
-                  label={archiveTarget.type === "received" ? "From" : "To"}
-                  value={archiveTarget.company_name}
+                  label={deleteTarget.type === "received" ? "From" : "To"}
+                  value={deleteTarget.company_name}
                 />
                 <Row
                   label="Quantity"
                   value={`${new Intl.NumberFormat("en-IN").format(
-                    archiveTarget.pieces
+                    deleteTarget.pieces
                   )} pcs`}
                 />
                 <Row
                   label="Date"
-                  value={formatDate(archiveTarget.transaction_date)}
+                  value={formatDate(deleteTarget.transaction_date)}
                 />
               </dl>
             </div>
@@ -327,24 +335,24 @@ export function RecordsPage() {
             <Button
               type="button"
               variant="outline"
-              disabled={archiving}
-              onClick={() => setArchiveTarget(null)}
+              disabled={deleting}
+              onClick={() => setDeleteTarget(null)}
             >
               Cancel
             </Button>
             <Button
               type="button"
               variant="destructive"
-              disabled={archiving}
-              onClick={performArchive}
+              disabled={deleting}
+              onClick={performDelete}
             >
-              {archiving ? (
+              {deleting ? (
                 <>
                   <Loader2Icon className="size-4 animate-spin" />
-                  Archiving…
+                  Deleting…
                 </>
               ) : (
-                "Archive"
+                "Delete Permanently"
               )}
             </Button>
           </DialogFooter>

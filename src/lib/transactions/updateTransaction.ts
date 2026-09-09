@@ -66,13 +66,27 @@ export async function updateTransaction(
 
 /**
  * Soft-delete (archive) a transaction — admin only (RLS enforces).
- * No physical row removal.
+ * No physical row removal. Kept for production mode.
  */
 export async function archiveTransaction(id: string): Promise<void> {
   const supabase = createClient();
   const { error } = await supabase
     .from("transactions")
     .update({ deleted_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) throw error;
+}
+
+/**
+ * Permanent (physical) DELETE of a transaction — admin only (RLS enforces).
+ * Used in the TRIAL version. Will be replaced by archiveTransaction()
+ * when the software moves to production.
+ */
+export async function deleteTransactionPermanently(id: string): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase
+    .from("transactions")
+    .delete()
     .eq("id", id);
   if (error) throw error;
 }

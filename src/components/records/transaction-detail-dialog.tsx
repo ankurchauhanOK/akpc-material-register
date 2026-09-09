@@ -22,7 +22,7 @@ export function TransactionDetailDialog({
   canEdit,
   isAdmin,
   onEdit,
-  onArchive,
+  onDelete,
 }: {
   transaction: TransactionWithNames;
   open: boolean;
@@ -30,7 +30,7 @@ export function TransactionDetailDialog({
   canEdit: boolean;
   isAdmin: boolean;
   onEdit: () => void;
-  onArchive: () => void;
+  onDelete: () => void;
 }) {
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [creatorName, setCreatorName] = useState<string>("—");
@@ -128,8 +128,8 @@ export function TransactionDetailDialog({
               </Button>
             )}
             {isAdmin && (
-              <Button variant="destructive" onClick={onArchive}>
-                Archive
+              <Button variant="destructive" onClick={onDelete}>
+                Delete
               </Button>
             )}
           </DialogFooter>

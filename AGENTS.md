@@ -17,7 +17,11 @@ replacing the paper receiving/giving register. **This is NOT an ERP.**
 - RLS enabled on all tables; role-based policies (`admin` / `operator` / `viewer`).
   Never expose the service-role key in frontend code.
 - Challans go to the private `challans` storage bucket; served via signed URLs.
-- No physical deletes of transactions — soft-delete via `deleted_at` (archive).
+- **Trial mode:** Admins can permanently DELETE transactions via
+  `deleteTransactionPermanently()`. `archiveTransaction()` (soft-delete via
+  `deleted_at`) is preserved in the codebase for the production switch later.
+  To revert: swap `deleteTransactionPermanently` → `archiveTransaction` in
+  `records-page.tsx` and restore the archive RLS policy.
 - Transaction `type` cannot be changed once created (DB trigger).
 - Indian formatting in the UI (₹, 29 Aug 2026), canonical numeric values in DB.
 
