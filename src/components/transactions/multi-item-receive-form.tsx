@@ -15,7 +15,6 @@ import {
   EntityCombobox,
   type PickerItem,
 } from "@/components/transactions/entity-combobox";
-import { ChallanUploader } from "@/components/transactions/challan-uploader";
 import { Input } from "@/components/ui/input";
 import {
   InputGroup,
@@ -27,8 +26,6 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
 import { useActiveComponents, useActiveParties } from "@/hooks/useMasters";
 import { createReceivingDocument } from "@/lib/transactions/createReceivingDocument";
-import { uploadChallan, removeChallan } from "@/lib/supabase/storage";
-import { maybeCompressImage } from "@/lib/image";
 import { formatDate, formatINR } from "@/lib/format";
 import type { Enums, Tables } from "@/lib/supabase/database.types";
 import {
@@ -121,7 +118,6 @@ export function MultiItemReceiveForm({ component }: { component: Component }) {
   const [vehicle, setVehicle] = useState("");
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("pending");
   const [lines, setLines] = useState<Line[]>([newLine(1)]);
-  const [externalDoc, setExternalDoc] = useState<File | null>(null);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState<
@@ -218,14 +214,7 @@ export function MultiItemReceiveForm({ component }: { component: Component }) {
     setSaving(true);
     setErrors({});
 
-    let uploadedPath: string | null = null;
-
     try {
-      if (externalDoc) {
-        const prepared = await maybeCompressImage(externalDoc);
-        uploadedPath = await uploadChallan(prepared);
-      }
-
       const created = await createReceivingDocument({
         type: "received",
         kind,
@@ -235,7 +224,6 @@ export function MultiItemReceiveForm({ component }: { component: Component }) {
         transactionDate: date,
         challanNumber: source === "supplier" ? challanNumber.trim() : null,
         vehicleDetails: source === "supplier" ? vehicle.trim() : null,
-        externalDocumentPath: uploadedPath,
         createdBy: user.id,
         partySnapshot: {
           name: selectedParty.name,
@@ -275,11 +263,9 @@ export function MultiItemReceiveForm({ component }: { component: Component }) {
       setDate(todayISO());
       setVehicle("");
       setPaymentStatus("pending");
-      setExternalDoc(null);
       setSource("supplier");
       setKind("raw-material");
     } catch (e) {
-      if (uploadedPath) await removeChallan(uploadedPath);
       setErrors({
         form:
           e instanceof Error
@@ -455,19 +441,6 @@ export function MultiItemReceiveForm({ component }: { component: Component }) {
               />
             </Field>
           )}
-        </div>
-      </section>
-
-      {/* Optional supporting document */}
-      <section className="mt-4 rounded-xl border border-border bg-white">
-        <h2 className="border-b px-5 py-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-          Supporting Document (optional)
-        </h2>
-        <div className="px-5 py-5">
-          <p className="mb-2 text-xs text-muted-foreground">
-            Attach the supplier&apos;s original challan / supporting document.
-          </p>
-          <ChallanUploader file={externalDoc} onChange={setExternalDoc} />
         </div>
       </section>
 
