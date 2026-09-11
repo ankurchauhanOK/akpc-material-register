@@ -24,7 +24,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
-import { useActiveComponents, useActiveParties } from "@/hooks/useMasters";
+import { useActiveParties } from "@/hooks/useMasters";
 import { createReceivingDocument } from "@/lib/transactions/createReceivingDocument";
 import { formatDate, formatINR } from "@/lib/format";
 import type { Enums, Tables } from "@/lib/supabase/database.types";
@@ -77,7 +77,7 @@ function newLine(lineNo: number): {
   return {
     id: crypto.randomUUID(),
     lineNo,
-    lineType: "component",
+    lineType: "other",
     componentId: null,
     itemName: "",
     quantity: "",
@@ -107,7 +107,6 @@ export function MultiItemReceiveForm({ component }: { component: Component }) {
   const router = useRouter();
   const { user, canCreate } = useAuth();
   const queryClient = useQueryClient();
-  const { items: components } = useActiveComponents();
   const { items: parties } = useActiveParties();
 
   const [source, setSource] = useState<DocumentSource>("supplier");
@@ -470,7 +469,6 @@ export function MultiItemReceiveForm({ component }: { component: Component }) {
             <LineCard
               key={line.id}
               line={line}
-              components={components}
               canRemove={lines.length > 1}
               onUpdate={(fn) => updateLine(line.id, fn)}
               onRemove={() => removeLine(line.id)}
@@ -568,19 +566,16 @@ export function MultiItemReceiveForm({ component }: { component: Component }) {
 
 function LineCard({
   line,
-  components,
   canRemove,
   onUpdate,
   onRemove,
 }: {
   line: Line;
-  components: Component[];
   canRemove: boolean;
   onUpdate: (fn: (l: Line) => Line) => void;
   onRemove: () => void;
 }) {
   const calc = lineCalc(line);
-  const isComponent = line.lineType === "component";
 
   return (
     <article className="rounded-xl border border-border bg-white p-4">
@@ -601,64 +596,19 @@ function LineCard({
       </header>
 
       <div className="grid gap-3">
-        {/* Item / Component */}
+        {/* Item / Material Name */}
         <div className="grid gap-1.5">
           <Label className="text-xs font-semibold uppercase tracking-wider">
-            Item / Component
+            Item / Material Name
           </Label>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() =>
-                onUpdate((l) => ({
-                  ...l,
-                  lineType: isComponent ? "other" : "component",
-                  componentId: isComponent ? null : l.componentId,
-                  itemName: isComponent ? "" : l.itemName,
-                }))
-              }
-              className={`shrink-0 rounded-md px-2 py-1.5 text-[10px] font-semibold uppercase ${
-                isComponent
-                  ? "bg-emerald-50 text-emerald-700"
-                  : "bg-zinc-100 text-muted-foreground"
-              }`}
-              title="Toggle component / other"
-            >
-              {isComponent ? "Component" : "Other"}
-            </button>
-            <div className="min-w-0 flex-1">
-              {isComponent ? (
-                <EntityCombobox
-                  items={components.map(toPicker)}
-                  selectedId={line.componentId}
-                  placeholder="Search item..."
-                  searchPlaceholder="Search component..."
-                  emptyText="No components found."
-                  createLabel=""
-                  canCreate={false}
-                  onSelect={(it) =>
-                    onUpdate((l) => ({
-                      ...l,
-                      componentId: it.id,
-                      itemName: it.name,
-                    }))
-                  }
-                  onCreate={async () => {
-                    throw new Error("not allowed");
-                  }}
-                />
-              ) : (
-                <Input
-                  value={line.itemName}
-                  onChange={(e) =>
-                    onUpdate((l) => ({ ...l, itemName: e.target.value }))
-                  }
-                  placeholder="Describe item..."
-                  className="h-10"
-                />
-              )}
-            </div>
-          </div>
+          <Input
+            value={line.itemName}
+            onChange={(e) =>
+              onUpdate((l) => ({ ...l, itemName: e.target.value }))
+            }
+            placeholder="e.g. MS Rod"
+            className="h-10"
+          />
         </div>
 
         {/* Quantity | Unit */}
