@@ -57,13 +57,13 @@ export function DashboardPage() {
         {canCreate && (
           <div className="grid grid-cols-2 gap-2">
             <Link
-              href="/components"
+              href="/components?action=receive"
               className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-akpc-receive px-4 text-[13px] font-semibold text-white transition-colors hover:brightness-110"
             >
               <ArrowDownLeftIcon className="size-4" /> Receive
             </Link>
             <Link
-              href="/components"
+              href="/components?action=send"
               className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-akpc-send px-4 text-[13px] font-semibold text-white transition-colors hover:brightness-110"
             >
               <ArrowUpRightIcon className="size-4" /> Send
@@ -109,13 +109,13 @@ export function DashboardPage() {
             {canCreate && (
               <div className="flex gap-2">
                 <Link
-                  href="/components"
+                  href="/components?action=receive"
                   className="inline-flex h-10 items-center gap-1.5 rounded-[10px] bg-emerald-700 px-3.5 text-[13px] font-semibold text-white transition-colors hover:bg-emerald-800"
                 >
                   <ArrowDownLeftIcon className="size-4" /> Receive
                 </Link>
                 <Link
-                  href="/components"
+                  href="/components?action=send"
                   className="inline-flex h-10 items-center gap-1.5 rounded-[10px] bg-orange-600 px-3.5 text-[13px] font-semibold text-white transition-colors hover:bg-orange-700"
                 >
                   <ArrowUpRightIcon className="size-4" /> Send

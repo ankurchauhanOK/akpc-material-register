@@ -13,7 +13,11 @@ import type { Enums, Tables } from "@/lib/supabase/database.types";
 type Material = Tables<"materials">;
 type ComponentCategory = Enums<"component_category">;
 
-export function ComponentsListPage() {
+export function ComponentsListPage({
+  action,
+}: {
+  action?: "send" | "receive";
+}) {
   const { canCreate } = useAuth();
   const [search, setSearch] = useState("");
 
@@ -38,9 +42,19 @@ export function ComponentsListPage() {
     <div className="mx-auto max-w-4xl">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Components</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {action === "send"
+              ? "Send Material"
+              : action === "receive"
+                ? "Receive Material"
+                : "Components"}
+          </h1>
           <p className="mt-1 text-sm text-zinc-500">
-            Open a component to receive, send, and review its documents.
+            {action
+              ? `Choose a component to ${
+                  action === "send" ? "send" : "receive"
+                } material for.`
+              : "Open a component to receive, send, and review its documents."}
           </p>
         </div>
         {canCreate && (
@@ -75,7 +89,9 @@ export function ComponentsListPage() {
           {filtered.map((m) => (
             <li key={m.id}>
               <Link
-                href={`/components/${m.id}`}
+                href={
+                  action ? `/components/${m.id}/${action}` : `/components/${m.id}`
+                }
                 className="flex items-center justify-between gap-3 px-4 py-3.5 hover:bg-muted/40"
               >
                 <div className="min-w-0">

@@ -331,6 +331,14 @@ export function MultiItemReceiveForm({ component }: { component: Component }) {
           <p className="mt-0.5 text-sm text-muted-foreground">
             Record incoming stock to the register.
           </p>
+          <div className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-1.5">
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+              Component
+            </span>
+            <span className="text-sm font-medium text-foreground">
+              {component.name}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -535,7 +543,7 @@ export function MultiItemReceiveForm({ component }: { component: Component }) {
             <Button
               type="button"
               variant="outline"
-              onClick={() => router.push(`/components/${component.id}`)}
+              onClick={() => router.back()}
             >
               Cancel
             </Button>
