@@ -2,7 +2,13 @@
 
 import { useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { PlusIcon, PencilIcon, SearchIcon, TrashIcon } from "lucide-react";
+import {
+  PlusIcon,
+  PencilIcon,
+  SearchIcon,
+  TrashIcon,
+  CheckIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -34,6 +40,7 @@ import {
   type MasterUsageBreakdown,
 } from "@/lib/masters/deleteMasters";
 import { MasterDeleteDialog } from "@/components/settings/master-delete-dialog";
+import { lookupPincode } from "@/lib/pincode";
 
 /** Human-readable disclosure of dependent records a cascade will remove. */
 function cascadeNote(b: MasterUsageBreakdown | null): string | null {
@@ -468,6 +475,10 @@ function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
   });
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [autofilledLocation, setAutofilledLocation] = useState<string | null>(
+    null
+  );
+  const [pincodeNote, setPincodeNote] = useState<string | null>(null);
 
   const filtered = items.filter((c) =>
     c.name.toLowerCase().includes(search.trim().toLowerCase())
@@ -484,6 +495,8 @@ function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
       pincode: "",
       role: "",
     });
+    setAutofilledLocation(null);
+    setPincodeNote(null);
     setErr(null);
   }
   function openEdit(c: Company) {
@@ -497,7 +510,38 @@ function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
       pincode: c.pincode ?? "",
       role: c.role ?? "",
     });
+    setAutofilledLocation(null);
+    setPincodeNote(null);
     setErr(null);
+  }
+
+  async function handlePincodeBlur() {
+    const code = form.pincode.trim();
+    if (!/^\d{6}$/.test(code)) {
+      setPincodeNote(null);
+      return;
+    }
+    const result = await lookupPincode(code);
+    if (!result) {
+      setPincodeNote("Couldn't auto-fill — enter the location manually.");
+      return;
+    }
+    const combined = `${result.postOffice}, ${result.district}, ${result.state}`;
+    // Never clobber manually typed text; only replace a previous autofill.
+    if (
+      form.location.trim() !== "" &&
+      form.location.trim() !== autofilledLocation
+    ) {
+      setPincodeNote(null);
+      return;
+    }
+    setAutofilledLocation(combined);
+    setForm((f) => ({ ...f, location: combined }));
+    setPincodeNote(
+      result.count > 1
+        ? `${result.count} post offices cover this pincode — loaded “${result.postOffice}”.`
+        : null
+    );
   }
 
   async function save() {
@@ -637,6 +681,11 @@ function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
                 placeholder="e.g. Rudrapur"
                 className="h-10"
               />
+              {form.location && form.location === autofilledLocation && (
+                <p className="flex items-center gap-1 text-xs font-medium text-emerald-600">
+                  <CheckIcon className="size-3.5" /> Auto-filled from pincode
+                </p>
+              )}
             </Field>
             <Field label="Post / Designation">
               <Input
@@ -658,9 +707,24 @@ function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
               <Input
                 value={form.pincode}
                 onChange={(e) => setForm({ ...form, pincode: e.target.value })}
+                onBlur={handlePincodeBlur}
                 placeholder="e.g. 263153"
+                inputMode="numeric"
+                maxLength={6}
                 className="h-10"
               />
+              {pincodeNote && (
+                <p
+                  className={cn(
+                    "text-xs",
+                    pincodeNote.startsWith("Couldn") || pincodeNote.startsWith("No ")
+                      ? "text-amber-600"
+                      : "text-emerald-600"
+                  )}
+                >
+                  {pincodeNote}
+                </p>
+              )}
             </Field>
           </div>
           {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
@@ -673,6 +737,8 @@ function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
               onClick={() => {
                 setCreating(false);
                 setEditing(null);
+                setPincodeNote(null);
+                setAutofilledLocation(null);
               }}
             >
               Cancel
