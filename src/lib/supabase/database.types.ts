@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           contact: string | null
           created_at: string
+          gstin: string | null
           id: string
           is_active: boolean
           location: string | null
@@ -25,11 +26,13 @@ export type Database = {
           pincode: string | null
           post: string | null
           role: Database["public"]["Enums"]["party_role"] | null
+          state: string | null
           updated_at: string
         }
         Insert: {
           contact?: string | null
           created_at?: string
+          gstin?: string | null
           id?: string
           is_active?: boolean
           location?: string | null
@@ -37,11 +40,13 @@ export type Database = {
           pincode?: string | null
           post?: string | null
           role?: Database["public"]["Enums"]["party_role"] | null
+          state?: string | null
           updated_at?: string
         }
         Update: {
           contact?: string | null
           created_at?: string
+          gstin?: string | null
           id?: string
           is_active?: boolean
           location?: string | null
@@ -49,6 +54,49 @@ export type Database = {
           pincode?: string | null
           post?: string | null
           role?: Database["public"]["Enums"]["party_role"] | null
+          state?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      company_settings: {
+        Row: {
+          address_line1: string | null
+          address_line2: string | null
+          city: string | null
+          company_name: string
+          created_at: string
+          gstin: string | null
+          id: string
+          pan: string | null
+          pincode: string | null
+          state: string | null
+          updated_at: string
+        }
+        Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          company_name?: string
+          created_at?: string
+          gstin?: string | null
+          id?: string
+          pan?: string | null
+          pincode?: string | null
+          state?: string | null
+          updated_at?: string
+        }
+        Update: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          company_name?: string
+          created_at?: string
+          gstin?: string | null
+          id?: string
+          pan?: string | null
+          pincode?: string | null
+          state?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -159,8 +207,10 @@ export type Database = {
           document_id: string
           gst_amount: number
           gst_percent: number
+          hsn_code: string | null
           id: string
           item_name: string
+          item_remarks: string | null
           line_no: number
           line_total: number
           line_type: Database["public"]["Enums"]["document_line_type"]
@@ -176,8 +226,10 @@ export type Database = {
           document_id: string
           gst_amount?: number
           gst_percent?: number
+          hsn_code?: string | null
           id?: string
           item_name: string
+          item_remarks?: string | null
           line_no: number
           line_total?: number
           line_type: Database["public"]["Enums"]["document_line_type"]
@@ -193,8 +245,10 @@ export type Database = {
           document_id?: string
           gst_amount?: number
           gst_percent?: number
+          hsn_code?: string | null
           id?: string
           item_name?: string
+          item_remarks?: string | null
           line_no?: number
           line_total?: number
           line_type?: Database["public"]["Enums"]["document_line_type"]
@@ -227,6 +281,8 @@ export type Database = {
           company_id: string
           created_at: string
           created_by: string | null
+          customer_ref_date: string | null
+          customer_ref_no: string | null
           deleted_at: string | null
           document_number: string
           external_document_path: string | null
@@ -234,12 +290,21 @@ export type Database = {
           id: string
           kind: Database["public"]["Enums"]["document_kind"]
           notes: string | null
+          our_address: string | null
+          our_city: string | null
+          our_company_name: string | null
+          our_gstin: string | null
+          our_pan: string | null
+          our_pincode: string | null
+          our_state: string | null
           party_company: string | null
           party_contact: string | null
+          party_gstin: string | null
           party_location: string | null
           party_name: string | null
           party_pincode: string | null
           party_post: string | null
+          party_state: string | null
           payment_status: Database["public"]["Enums"]["payment_status"] | null
           source: Database["public"]["Enums"]["document_source"]
           status: Database["public"]["Enums"]["receiving_document_status"]
@@ -255,6 +320,8 @@ export type Database = {
           company_id: string
           created_at?: string
           created_by?: string | null
+          customer_ref_date?: string | null
+          customer_ref_no?: string | null
           deleted_at?: string | null
           document_number: string
           external_document_path?: string | null
@@ -262,12 +329,21 @@ export type Database = {
           id?: string
           kind: Database["public"]["Enums"]["document_kind"]
           notes?: string | null
+          our_address?: string | null
+          our_city?: string | null
+          our_company_name?: string | null
+          our_gstin?: string | null
+          our_pan?: string | null
+          our_pincode?: string | null
+          our_state?: string | null
           party_company?: string | null
           party_contact?: string | null
+          party_gstin?: string | null
           party_location?: string | null
           party_name?: string | null
           party_pincode?: string | null
           party_post?: string | null
+          party_state?: string | null
           payment_status?: Database["public"]["Enums"]["payment_status"] | null
           source: Database["public"]["Enums"]["document_source"]
           status?: Database["public"]["Enums"]["receiving_document_status"]
@@ -283,6 +359,8 @@ export type Database = {
           company_id?: string
           created_at?: string
           created_by?: string | null
+          customer_ref_date?: string | null
+          customer_ref_no?: string | null
           deleted_at?: string | null
           document_number?: string
           external_document_path?: string | null
@@ -290,12 +368,21 @@ export type Database = {
           id?: string
           kind?: Database["public"]["Enums"]["document_kind"]
           notes?: string | null
+          our_address?: string | null
+          our_city?: string | null
+          our_company_name?: string | null
+          our_gstin?: string | null
+          our_pan?: string | null
+          our_pincode?: string | null
+          our_state?: string | null
           party_company?: string | null
           party_contact?: string | null
+          party_gstin?: string | null
           party_location?: string | null
           party_name?: string | null
           party_pincode?: string | null
           party_post?: string | null
+          party_state?: string | null
           payment_status?: Database["public"]["Enums"]["payment_status"] | null
           source?: Database["public"]["Enums"]["document_source"]
           status?: Database["public"]["Enums"]["receiving_document_status"]
@@ -430,6 +517,7 @@ export type Database = {
         Args: never
         Returns: Database["public"]["Enums"]["app_role"]
       }
+      generate_dc_number: { Args: { p_date: string }; Returns: string }
       generate_transaction_number: {
         Args: { p_type: Database["public"]["Enums"]["transaction_type"] }
         Returns: string
@@ -461,12 +549,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -490,11 +578,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -515,11 +603,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -540,11 +628,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -557,11 +645,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

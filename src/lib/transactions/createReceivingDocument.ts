@@ -15,6 +15,8 @@ export type ReceivingLineInput = {
   unit: Enums<"unit_type">;
   unitPrice: number | null;
   gstPercent: number;
+  hsnCode?: string | null;
+  itemRemarks?: string | null;
   // financial calculation per line (subtotal / gst_amount / line_total)
   subtotal: number;
   gstAmount: number;
@@ -41,6 +43,22 @@ export type CreateReceivingDocumentInput = {
     contact?: string | null;
     pincode?: string | null;
   };
+  // Company snapshot (FROM section on challan)
+  ourCompany?: {
+    companyName?: string | null;
+    address?: string | null;
+    city?: string | null;
+    state?: string | null;
+    pincode?: string | null;
+    gstin?: string | null;
+    pan?: string | null;
+  };
+  // Customer reference fields
+  customerRefNo?: string | null;
+  customerRefDate?: string | null;
+  // Party GSTIN/state snapshot (TO section on challan)
+  partyGstin?: string | null;
+  partyState?: string | null;
   items: ReceivingLineInput[];
 };
 
@@ -83,6 +101,17 @@ export async function createReceivingDocument(
     party_post: input.partySnapshot?.post ?? null,
     party_contact: input.partySnapshot?.contact ?? null,
     party_pincode: input.partySnapshot?.pincode ?? null,
+    party_gstin: input.partyGstin ?? null,
+    party_state: input.partyState ?? null,
+    our_company_name: input.ourCompany?.companyName ?? null,
+    our_address: input.ourCompany?.address ?? null,
+    our_city: input.ourCompany?.city ?? null,
+    our_state: input.ourCompany?.state ?? null,
+    our_pincode: input.ourCompany?.pincode ?? null,
+    our_gstin: input.ourCompany?.gstin ?? null,
+    our_pan: input.ourCompany?.pan ?? null,
+    customer_ref_no: input.customerRefNo ?? null,
+    customer_ref_date: input.customerRefDate ?? null,
     subtotal: input.items.reduce((s, i) => s + (i.subtotal || 0), 0),
     gst_total: input.items.reduce((s, i) => s + (i.gstAmount || 0), 0),
     total_amount: input.items.reduce((s, i) => s + (i.lineTotal || 0), 0),
@@ -114,6 +143,8 @@ export async function createReceivingDocument(
           unit: i.unit,
           unit_price: i.unitPrice ?? null,
           gst_percent: i.gstPercent,
+          hsn_code: i.hsnCode ?? null,
+          item_remarks: i.itemRemarks ?? null,
           subtotal: i.subtotal,
           gst_amount: i.gstAmount,
           line_total: i.lineTotal,

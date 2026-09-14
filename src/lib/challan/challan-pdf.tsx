@@ -9,12 +9,13 @@ import {
   pdf,
 } from "@react-pdf/renderer";
 import type { Tables } from "@/lib/supabase/database.types";
-import { formatDate, formatINR } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 
 const styles = StyleSheet.create({
   page: {
-    padding: 40,
-    fontSize: 11,
+    paddingHorizontal: 40,
+    paddingVertical: 32,
+    fontSize: 10,
     fontFamily: "Helvetica",
     color: "#1a1a1a",
   },
@@ -22,87 +23,94 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: 20,
   },
   brand: {
     fontSize: 16,
     fontWeight: "bold",
   },
-  sub: {
-    fontSize: 10,
-    color: "#555",
-    marginTop: 2,
+  brandLine: {
+    fontSize: 9,
+    color: "#444",
+    marginTop: 1,
+  },
+  docTitleBlock: {
+    alignItems: "flex-end",
   },
   docTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "bold",
     textAlign: "right",
   },
-  meta: {
-    fontSize: 10,
-    textAlign: "right",
-    color: "#555",
+  metaRow: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    width: 260,
     marginTop: 2,
+  },
+  metaLabel: {
+    fontSize: 9,
+    color: "#666",
+    width: 110,
+  },
+  metaValue: {
+    fontSize: 9,
+    width: 150,
+    textAlign: "right",
   },
   rule: {
     borderBottomWidth: 1,
-    borderBottomColor: "#ccc",
-    marginBottom: 16,
-  },
-  table: {
-    width: "100%",
+    borderBottomColor: "#999",
     marginVertical: 12,
   },
-  row: {
-    flexDirection: "row",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e5e5",
-    paddingVertical: 6,
+  toBlock: {
+    borderWidth: 1,
+    borderColor: "#aaa",
+    padding: 8,
   },
-  head: {
-    flexDirection: "row",
-    borderBottomWidth: 1.5,
-    borderBottomColor: "#999",
-    paddingVertical: 6,
-    backgroundColor: "#f5f5f5",
-  },
-  cellA: { width: "8%", fontSize: 10 },
-  cellB: { width: "34%", fontSize: 10 },
-  cellC: { width: "18%", fontSize: 10 },
-  cellD: { width: "20%", fontSize: 10 },
-  cellE: { width: "20%", fontSize: 10, textAlign: "right" },
-  headText: { fontWeight: "bold", fontSize: 10 },
-  partyBlock: {
-    marginTop: 6,
-    marginBottom: 6,
-  },
-  partyLabel: {
+  toLabel: {
     fontSize: 9,
     color: "#777",
     textTransform: "uppercase",
   },
-  partyName: {
-    fontSize: 13,
+  toName: {
+    fontSize: 12,
     fontWeight: "bold",
     marginTop: 2,
   },
-  partyLine: {
+  toLine: {
     fontSize: 10,
     color: "#444",
     marginTop: 1,
   },
-  label: {
-    fontSize: 9,
-    color: "#777",
-    textTransform: "uppercase",
+  table: {
+    width: "100%",
+    marginTop: 12,
   },
-  value: {
-    fontSize: 11,
-    marginTop: 1,
+  head: {
+    flexDirection: "row",
+    borderWidth: 1,
+    borderColor: "#999",
+    backgroundColor: "#f0f0f0",
+    paddingVertical: 5,
   },
+  row: {
+    flexDirection: "row",
+    borderWidth: 1,
+    borderTopWidth: 0,
+    borderColor: "#aaa",
+    paddingVertical: 6,
+  },
+  headText: { fontWeight: "bold", fontSize: 9 },
+  cellSno: { width: "8%", fontSize: 9, textAlign: "center" },
+  cellHsn: { width: "13%", fontSize: 9 },
+  cellDesc: { width: "42%", fontSize: 10 },
+  cellQty: { width: "10%", fontSize: 9, textAlign: "right" },
+  cellUnit: { width: "9%", fontSize: 9 },
+  cellRem: { width: "18%", fontSize: 9 },
+  headCenter: { textAlign: "center" },
   footer: {
     position: "absolute",
-    bottom: 40,
+    bottom: 32,
     left: 40,
     right: 40,
     flexDirection: "row",
@@ -113,170 +121,210 @@ const styles = StyleSheet.create({
     borderTopColor: "#ccc",
     paddingTop: 8,
   },
+  sigRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 80,
+  },
+  sigBlock: {
+    flexDirection: "column",
+    alignItems: "center",
+    width: "45%",
+  },
+  sigLine: {
+    width: "100%",
+    borderBottomWidth: 1,
+    borderBottomStyle: "dashed",
+    borderBottomColor: "#999",
+    height: 30,
+  },
+  sigLabel: {
+    fontSize: 9,
+    color: "#666",
+    textTransform: "uppercase",
+    marginTop: 2,
+  },
 });
 
 type Tx = Tables<"transactions"> & { party_name: string | null };
 type DocItem = Tables<"receiving_document_items">;
+type FullDoc = Tables<"receiving_documents">;
+
+const UNIT_SHORT: Record<string, string> = {
+  pieces: "Nos",
+  kg: "Kg",
+  meter: "Mtr",
+  litre: "Ltr",
+  set: "Set",
+};
 
 export function ChallanDocument({
   tx,
   componentName,
   componentUnit,
   items,
-  subtotal,
-  gstTotal,
+  doc,
 }: {
   tx: Tx;
   componentName: string;
   componentUnit: string;
   items?: DocItem[] | null;
-  subtotal?: number;
-  gstTotal?: number;
+  doc?: FullDoc | null;
 }) {
   const isReceive = tx.type === "received";
-  const partyLine = tx.party_name || tx.party_company || "—";
   const hasItems = (items?.length ?? 0) > 0;
 
-  const unitLabel: Record<string, string> = {
-    pieces: "Pcs",
-    kg: "Kg",
-    meter: "Mtr",
-    litre: "Ltr",
-    set: "Set",
+  const fromName = doc?.our_company_name || "AK Precision Components";
+  const fromLines = [
+    doc?.our_address,
+    doc?.our_city,
+    doc?.our_pincode
+      ? [doc.our_state, doc.our_pincode].filter(Boolean).join(" ")
+      : doc?.our_state,
+  ].filter(Boolean);
+
+  const partyLine = doc?.party_name || doc?.party_company || tx.party_name || tx.party_company || "—";
+  const toLines = [
+    doc?.party_location ?? tx.party_location,
+    doc?.party_post ?? tx.party_post,
+    (doc?.party_pincode ?? tx.party_pincode)
+      ? [doc?.party_state, doc?.party_pincode ?? tx.party_pincode]
+          .filter(Boolean)
+          .join(" ")
+      : doc?.party_state,
+  ].filter(Boolean);
+
+  const meta: { label: string; value: string }[] = [
+    { label: "DC No", value: doc?.document_number ?? tx.transaction_number },
+    { label: "DC Date", value: formatDate(doc?.transaction_date ?? tx.transaction_date) },
+    { label: "Customer Ref. No.", value: doc?.customer_ref_no ?? "—" },
+    {
+      label: "Customer Ref. Date",
+      value: doc?.customer_ref_date ? formatDate(doc.customer_ref_date) : "—",
+    },
+    { label: "GST No", value: doc?.our_gstin ?? "—" },
+    { label: "PAN No", value: doc?.our_pan ?? "—" },
+  ];
+
+  const renderRows = () => {
+    if (hasItems) {
+      return items!.map((item, i) => (
+        <View style={styles.row} key={item.id} wrap={false}>
+          <Text style={styles.cellSno}>{i + 1}</Text>
+          <Text style={styles.cellHsn}>{item.hsn_code || ""}</Text>
+          <View style={{ width: "42%" }}>
+            <Text style={{ fontSize: 10 }}>{item.item_name}</Text>
+          </View>
+          <Text style={styles.cellQty}>
+            {new Intl.NumberFormat("en-IN").format(Number(item.quantity))}
+          </Text>
+          <Text style={styles.cellUnit}>{UNIT_SHORT[item.unit] ?? item.unit}</Text>
+          <Text style={styles.cellRem}>{item.item_remarks || ""}</Text>
+        </View>
+      ));
+    }
+    return (
+      <View style={styles.row}>
+        <Text style={styles.cellSno}>1</Text>
+        <Text style={styles.cellHsn}>{""}</Text>
+        <Text style={styles.cellDesc}>{componentName}</Text>
+        <Text style={styles.cellQty}>{tx.pieces}</Text>
+        <Text style={styles.cellUnit}>{componentUnit}</Text>
+        <Text style={styles.cellRem}>{""}</Text>
+      </View>
+    );
   };
+
+  const rowCount = hasItems ? items!.length : 1;
+  const fillerRows = Math.max(0, 8 - rowCount);
 
   return (
     <Document>
       <Page size="A4" style={styles.page}>
+        {/* Header */}
         <View style={styles.headerRow}>
           <View>
-            <Text style={styles.brand}>AK Precision Components</Text>
-            <Text style={styles.sub}>AKPC · Material Register</Text>
+            <Text style={styles.brand}>{fromName}</Text>
+            {fromLines.map((l, i) => (
+              <Text key={i} style={styles.brandLine}>
+                {l}
+              </Text>
+            ))}
           </View>
-          <View>
+          <View style={styles.docTitleBlock}>
             <Text style={styles.docTitle}>
               {isReceive ? "RECEIVING CHALLAN" : "DELIVERY CHALLAN"}
             </Text>
-            <Text style={styles.meta}>{tx.transaction_number}</Text>
-            <Text style={styles.meta}>{formatDate(tx.transaction_date)}</Text>
+            {meta.map((m) => (
+              <View key={m.label} style={styles.metaRow}>
+                <Text style={styles.metaLabel}>{m.label}</Text>
+                <Text style={styles.metaValue}>{m.value}</Text>
+              </View>
+            ))}
           </View>
         </View>
+
         <View style={styles.rule} />
 
-        <View style={styles.partyBlock}>
-          <Text style={styles.partyLabel}>{isReceive ? "Received From" : "Sent To"}</Text>
-          <Text style={styles.partyName}>{partyLine}</Text>
-          {tx.party_location ? (
-            <Text style={styles.partyLine}>{tx.party_location}</Text>
+        {/* TO block */}
+        <View style={styles.toBlock}>
+          <Text style={styles.toLabel}>{isReceive ? "Received From" : "To"}</Text>
+          <Text style={styles.toName}>{partyLine}</Text>
+          {toLines.map((l, i) => (
+            <Text key={i} style={styles.toLine}>
+              {l}
+            </Text>
+          ))}
+          {doc?.party_contact ? (
+            <Text style={styles.toLine}>{doc.party_contact}</Text>
           ) : null}
-          {tx.party_contact ? (
-            <Text style={styles.partyLine}>{tx.party_contact}</Text>
+          {doc?.party_gstin ? (
+            <Text style={styles.toLine}>GST No: {doc.party_gstin}</Text>
           ) : null}
         </View>
 
+        {/* Item table */}
         <View style={styles.table}>
           <View style={styles.head}>
-            <Text style={styles.cellA}>
-              <Text style={styles.headText}>#</Text>
+            <Text style={[styles.cellSno, styles.headText]}>S. No.</Text>
+            <Text style={[styles.cellHsn, styles.headText]}>HSN/SAC</Text>
+            <Text style={[styles.cellDesc, styles.headText]}>
+              Description of Goods
             </Text>
-            <Text style={styles.cellB}>
-              <Text style={styles.headText}>Item</Text>
-            </Text>
-            <Text style={styles.cellC}>
-              <Text style={styles.headText}>Quantity</Text>
-            </Text>
-            <Text style={styles.cellD}>
-              <Text style={styles.headText}>Unit Price</Text>
-            </Text>
-            <Text style={styles.cellE}>
-              <Text style={styles.headText}>Amount</Text>
-            </Text>
+            <Text style={[styles.cellQty, styles.headText, styles.headCenter]}>MOQ</Text>
+            <Text style={[styles.cellUnit, styles.headText]}>Unit</Text>
+            <Text style={[styles.cellRem, styles.headText]}>Remarks</Text>
           </View>
 
-          {hasItems
-            ? items!.map((item, i) => (
-                <View style={styles.row} key={item.id}>
-                  <Text style={styles.cellA}>{i + 1}</Text>
-                  <Text style={styles.cellB}>{item.item_name}</Text>
-                  <Text style={styles.cellC}>
-                    {new Intl.NumberFormat("en-IN").format(Number(item.quantity))}{" "}
-                    {unitLabel[item.unit] ?? item.unit}
-                  </Text>
-                  <Text style={styles.cellD}>
-                    {item.unit_price != null ? formatINR(item.unit_price) : "—"}
-                  </Text>
-                  <Text style={styles.cellE}>{formatINR(item.line_total)}</Text>
-                </View>
-              ))
-            : (
-                <View style={styles.row}>
-                  <Text style={styles.cellA}>1</Text>
-                  <Text style={styles.cellB}>{componentName}</Text>
-                  <Text style={styles.cellC}>
-                    {tx.pieces} {componentUnit}
-                  </Text>
-                  <Text style={styles.cellD}>
-                    {tx.unit_price != null ? formatINR(tx.unit_price) : "—"}
-                  </Text>
-                  <Text style={styles.cellE}>{formatINR(tx.total_amount)}</Text>
-                </View>
-              )}
+          {renderRows()}
+          {Array.from({ length: fillerRows }).map((_, i) => (
+            <View style={styles.row} key={`empty-${i}`}>
+              <Text style={styles.cellSno}>{" "}</Text>
+              <Text style={styles.cellHsn}>{" "}</Text>
+              <Text style={styles.cellDesc}>{" "}</Text>
+              <Text style={styles.cellQty}>{" "}</Text>
+              <Text style={styles.cellUnit}>{" "}</Text>
+              <Text style={styles.cellRem}>{" "}</Text>
+            </View>
+          ))}
         </View>
 
-        <View
-          style={{
-            marginTop: 8,
-            borderTopWidth: 1,
-            borderTopColor: "#999",
-            paddingTop: 6,
-            flexDirection: "column",
-            alignItems: "flex-end",
-            gap: 2,
-          }}
-        >
-          {hasItems && (
-            <>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", width: "50%" }}>
-                <Text style={styles.value}>Total (Excl. GST)</Text>
-                <Text style={styles.value}>{formatINR(subtotal ?? 0)}</Text>
-              </View>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", width: "50%" }}>
-                <Text style={styles.value}>Total GST</Text>
-                <Text style={styles.value}>{formatINR(gstTotal ?? 0)}</Text>
-              </View>
-            </>
-          )}
-          <View style={{ flexDirection: "row", justifyContent: "space-between", width: "50%" }}>
-            <Text style={styles.value}>Total Amount</Text>
-            <Text style={{ fontSize: 13, fontWeight: "bold" }}>
-              {formatINR(tx.total_amount)}
+        {/* Signature footer */}
+        <View style={styles.sigRow}>
+          <View style={styles.sigBlock}>
+            <View style={styles.sigLine} />
+            <Text style={styles.sigLabel}>
+              {isReceive ? "Authorised Signatory" : "Prepared By"}
             </Text>
           </View>
-        </View>
-
-        <View
-          style={{
-            marginTop: 24,
-            flexDirection: "row",
-            justifyContent: "space-between",
-          }}
-        >
-          <View>
-            <Text style={styles.label}>Prepared By</Text>
-            <Text style={{ ...styles.value, marginTop: 26 }}>________</Text>
-          </View>
-          <View>
-            <Text style={{ ...styles.label, textAlign: "right" }}>
-              {isReceive ? "Authorised Signatory" : "Receiver's Signature"}
-            </Text>
-            <Text style={{ ...styles.value, marginTop: 26, textAlign: "right" }}>
-              ________
-            </Text>
+          <View style={styles.sigBlock}>
+            <View style={styles.sigLine} />
+            <Text style={styles.sigLabel}>Receiver&apos;s Signature</Text>
           </View>
         </View>
 
         <View style={styles.footer}>
-          <Text>AK Precision Components</Text>
+          <Text>{doc?.our_company_name || "AK Precision Components"}</Text>
           <Text>This challan is computer generated.</Text>
         </View>
       </Page>
@@ -284,24 +332,22 @@ export function ChallanDocument({
   );
 }
 
-/** Generate a Blob of the challan PDF for a transaction. */
+/** Generate a Blob of the challan PDF for a transaction/document. */
 export async function renderChallanPdf(
   tx: Tx,
   componentName: string,
   componentUnit: string,
   items?: DocItem[] | null,
-  subtotal?: number,
-  gstTotal?: number
+  doc?: FullDoc | null
 ): Promise<Blob> {
-  const doc = (
+  const docEl = (
     <ChallanDocument
       tx={tx}
       componentName={componentName}
       componentUnit={componentUnit}
       items={items}
-      subtotal={subtotal}
-      gstTotal={gstTotal}
+      doc={doc}
     />
   );
-  return pdf(doc).toBlob();
+  return pdf(docEl).toBlob();
 }

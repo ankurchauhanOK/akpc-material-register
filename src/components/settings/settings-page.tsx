@@ -68,13 +68,14 @@ type UnitType = Enums<"unit_type">;
 type ComponentCategory = Enums<"component_category">;
 type PartyRole = Enums<"party_role">;
 
-type Tab = "components" | "parties" | "users";
+type Tab = "company" | "components" | "parties" | "users";
 
 export function SettingsPage() {
   const { isAdmin, canManageMasters } = useAuth();
   const [tab, setTab] = useState<Tab>("components");
 
   const tabs: { key: Tab; label: string; show: boolean }[] = [
+    { key: "company", label: "Company Profile", show: isAdmin },
     { key: "components", label: "Components", show: canManageMasters },
     { key: "parties", label: "Parties", show: canManageMasters },
     { key: "users", label: "Users & Roles", show: isAdmin },
@@ -90,7 +91,7 @@ export function SettingsPage() {
       <div className="mb-4">
         <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          Manage component masters and parties.
+          Manage company profile, component masters, and parties.
         </p>
       </div>
 
@@ -113,6 +114,7 @@ export function SettingsPage() {
         ))}
       </div>
 
+      {activeTab === "company" && <CompanyProfileSection />}
       {activeTab === "components" && <ComponentsSection isAdmin={isAdmin} />}
       {activeTab === "parties" && <PartiesSection isAdmin={isAdmin} />}
       {activeTab === "users" && <UsersSection />}
@@ -471,6 +473,8 @@ function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
     post: "",
     contact: "",
     pincode: "",
+    gstin: "",
+    state: "",
     role: "" as PartyRole | "",
   });
   const [err, setErr] = useState<string | null>(null);
@@ -493,6 +497,8 @@ function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
       post: "",
       contact: "",
       pincode: "",
+      gstin: "",
+      state: "",
       role: "",
     });
     setAutofilledLocation(null);
@@ -508,6 +514,8 @@ function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
       post: c.post ?? "",
       contact: c.contact ?? "",
       pincode: c.pincode ?? "",
+      gstin: c.gstin ?? "",
+      state: c.state ?? "",
       role: c.role ?? "",
     });
     setAutofilledLocation(null);
@@ -560,6 +568,8 @@ function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
         post: form.post.trim() || null,
         contact: form.contact.trim() || null,
         pincode: form.pincode.trim() || null,
+        gstin: form.gstin.trim() || null,
+        state: form.state.trim() || null,
         role: form.role ? (form.role as PartyRole) : null,
       };
       if (creating) {
@@ -726,6 +736,24 @@ function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
                 </p>
               )}
             </Field>
+            <Field label="State">
+              <Input
+                value={form.state}
+                onChange={(e) => setForm({ ...form, state: e.target.value })}
+                placeholder="e.g. Uttarakhand"
+                className="h-10"
+              />
+            </Field>
+            <Field label="GSTIN">
+              <Input
+                value={form.gstin}
+                onChange={(e) =>
+                  setForm({ ...form, gstin: e.target.value.toUpperCase() })
+                }
+                placeholder="e.g. 05AAWPW7217K1ZP"
+                className="h-10 uppercase"
+              />
+            </Field>
           </div>
           {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
           <div className="mt-3 flex gap-2">
@@ -824,6 +852,256 @@ function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
             : []
         }
       />
+    </div>
+  );
+}
+
+// ---------------- Company Profile ----------------
+
+type CompanySettings = Tables<"company_settings">;
+
+const COMPANY_PROFILE_ID = "00000000-0000-0000-0000-000000000001";
+
+function CompanyProfileSection() {
+  const qc = useQueryClient();
+  const inval = () => qc.invalidateQueries({ queryKey: ["company_settings"] });
+
+  const { data: settings, isLoading } = useQuery({
+    queryKey: ["company_settings"],
+    queryFn: async () => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("company_settings")
+        .select("*")
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return (data ?? null) as CompanySettings | null;
+    },
+  });
+
+  const [form, setForm] = useState({
+    companyName: "",
+    addressLine1: "",
+    addressLine2: "",
+    city: "",
+    state: "",
+    pincode: "",
+    gstin: "",
+    pan: "",
+  });
+  const [loaded, setLoaded] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState(false);
+  const [autofilledLocation, setAutofilledLocation] = useState<string | null>(
+    null
+  );
+  const [pincodeNote, setPincodeNote] = useState<string | null>(null);
+
+  // Sync the form once when settings arrive.
+  if (settings && !loaded) {
+    setForm({
+      companyName: settings.company_name ?? "",
+      addressLine1: settings.address_line1 ?? "",
+      addressLine2: settings.address_line2 ?? "",
+      city: settings.city ?? "",
+      state: settings.state ?? "",
+      pincode: settings.pincode ?? "",
+      gstin: settings.gstin ?? "",
+      pan: settings.pan ?? "",
+    });
+    setLoaded(true);
+  }
+
+  async function handlePincodeBlur() {
+    const code = form.pincode.trim();
+    if (!/^\d{6}$/.test(code)) {
+      setPincodeNote(null);
+      return;
+    }
+    const result = await lookupPincode(code);
+    if (!result) {
+      setPincodeNote("Couldn't auto-fill — enter the address manually.");
+      return;
+    }
+    const combined = `${result.postOffice}, ${result.district}, ${result.state}`;
+    if (
+      form.addressLine1.trim() !== "" &&
+      form.addressLine1.trim() !== autofilledLocation
+    ) {
+      setPincodeNote(null);
+      return;
+    }
+    setAutofilledLocation(combined);
+    setForm((f) => ({ ...f, addressLine1: combined }));
+    setPincodeNote(
+      result.count > 1
+        ? `${result.count} post offices cover this pincode — loaded “${result.postOffice}”.`
+        : null
+    );
+  }
+
+  async function save() {
+    if (saving) return;
+    if (!form.companyName.trim()) {
+      setErr("Company name is required.");
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    setSavedMsg(false);
+    try {
+      const supabase = createClient();
+      const payload = {
+        company_name: form.companyName.trim(),
+        address_line1: form.addressLine1.trim() || null,
+        address_line2: form.addressLine2.trim() || null,
+        city: form.city.trim() || null,
+        state: form.state.trim() || null,
+        pincode: form.pincode.trim() || null,
+        gstin: form.gstin.trim().toUpperCase() || null,
+        pan: form.pan.trim().toUpperCase() || null,
+      };
+      const { error } = await supabase
+        .from("company_settings")
+        .upsert({ id: COMPANY_PROFILE_ID, ...payload });
+      if (error) throw error;
+      inval();
+      setSavedMsg(true);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not save.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (isLoading) {
+    return <p className="p-6 text-center text-sm text-zinc-500">Loading…</p>;
+  }
+
+  return (
+    <div>
+      <p className="mb-4 text-sm text-zinc-500">
+        Your company details appear in the FROM section of every Delivery
+        Challan. Saved information is snapshotted onto each document at the
+        time it is created.
+      </p>
+
+      <div className="rounded-xl border bg-white p-5">
+        <h3 className="mb-4 text-sm font-semibold">Company details</h3>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <Field label="Company Name">
+              <Input
+                value={form.companyName}
+                onChange={(e) =>
+                  setForm({ ...form, companyName: e.target.value })
+                }
+                placeholder="e.g. AK Precision Components"
+                className="h-10"
+              />
+            </Field>
+          </div>
+          <Field label="Address Line 1">
+            <Input
+              value={form.addressLine1}
+              onChange={(e) =>
+                setForm({ ...form, addressLine1: e.target.value })
+              }
+              placeholder="e.g. Chhatarpur, U. Rudrapur"
+              className="h-10"
+            />
+            {form.addressLine1 && form.addressLine1 === autofilledLocation && (
+              <p className="flex items-center gap-1 text-xs font-medium text-emerald-600">
+                <CheckIcon className="size-3.5" /> Auto-filled from pincode
+              </p>
+            )}
+          </Field>
+          <Field label="Address Line 2">
+            <Input
+              value={form.addressLine2}
+              onChange={(e) =>
+                setForm({ ...form, addressLine2: e.target.value })
+              }
+              placeholder="e.g. Near Jio Tower"
+              className="h-10"
+            />
+          </Field>
+          <Field label="City">
+            <Input
+              value={form.city}
+              onChange={(e) => setForm({ ...form, city: e.target.value })}
+              placeholder="e.g. Rudrapur"
+              className="h-10"
+            />
+          </Field>
+          <Field label="State">
+            <Input
+              value={form.state}
+              onChange={(e) => setForm({ ...form, state: e.target.value })}
+              placeholder="e.g. Uttarakhand"
+              className="h-10"
+            />
+          </Field>
+          <Field label="Pincode">
+            <Input
+              value={form.pincode}
+              onChange={(e) => setForm({ ...form, pincode: e.target.value })}
+              onBlur={handlePincodeBlur}
+              placeholder="e.g. 263153"
+              inputMode="numeric"
+              maxLength={6}
+              className="h-10"
+            />
+            {pincodeNote && (
+              <p
+                className={cn(
+                  "text-xs",
+                  pincodeNote.startsWith("Couldn") || pincodeNote.startsWith("No ")
+                    ? "text-amber-600"
+                    : "text-emerald-600"
+                )}
+              >
+                {pincodeNote}
+              </p>
+            )}
+          </Field>
+          <Field label="GSTIN">
+            <Input
+              value={form.gstin}
+              onChange={(e) =>
+                setForm({ ...form, gstin: e.target.value.toUpperCase() })
+              }
+              placeholder="e.g. 05CICPC6432J1ZJ"
+              className="h-10 uppercase"
+            />
+          </Field>
+          <Field label="PAN">
+            <Input
+              value={form.pan}
+              onChange={(e) =>
+                setForm({ ...form, pan: e.target.value.toUpperCase() })
+              }
+              placeholder="e.g. CICPC6432J"
+              className="h-10 uppercase"
+            />
+          </Field>
+        </div>
+
+        {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
+        {savedMsg && (
+          <p className="mt-2 flex items-center gap-1 text-sm font-medium text-emerald-600">
+            <CheckIcon className="size-4" /> Company profile saved.
+          </p>
+        )}
+
+        <div className="mt-4">
+          <Button onClick={save} disabled={saving}>
+            {saving ? "Saving…" : "Save Company Profile"}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

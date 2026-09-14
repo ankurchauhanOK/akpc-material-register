@@ -62,8 +62,7 @@ export function DocumentDetail({
         component.name,
         UNIT_LABELS[component.unit],
         hasItems ? transaction.items : null,
-        transaction.subtotal,
-        transaction.gst_total
+        transaction as never
       );
       setPdfUrl(URL.createObjectURL(blob));
     } finally {
@@ -180,7 +179,7 @@ export function DocumentDetail({
           {pdfUrl ? (
             <a
               href={pdfUrl}
-              download={`${transaction.transaction_number}.pdf`}
+              download={`${transaction.transaction_number.replace(/\//g, "-")}.pdf`}
               className="inline-flex h-10 items-center rounded-lg bg-emerald-600 px-3 text-sm font-medium text-white hover:bg-emerald-700"
             >
               <FileDownIcon className="size-4" /> Download PDF

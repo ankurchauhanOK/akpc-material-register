@@ -2,25 +2,20 @@
 
 import { useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpRightIcon } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ArrowUpRightIcon, PlusIcon, Trash2Icon } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   EntityCombobox,
   type PickerItem,
 } from "@/components/transactions/entity-combobox";
 import { Input } from "@/components/ui/input";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "@/components/ui/input-group";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
 import { useActiveParties } from "@/hooks/useMasters";
 import { createReceivingDocument } from "@/lib/transactions/createReceivingDocument";
-import { formatDate, formatINR } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import type { Enums, Tables } from "@/lib/supabase/database.types";
 import { UNIT_TYPES, UNIT_LABELS } from "@/lib/supabase/types";
 
@@ -28,6 +23,7 @@ type Component = Tables<"materials">;
 type Party = Tables<"companies">;
 type UnitType = Enums<"unit_type">;
 type LineType = Enums<"document_line_type">;
+type CompanySettings = Tables<"company_settings">;
 
 const toPicker = (p: { id: string; name: string }): PickerItem => ({
   id: p.id,
@@ -41,6 +37,32 @@ function todayISO() {
   return local.toISOString().slice(0, 10);
 }
 
+function newLine(lineNo: number, componentName: string): {
+  id: string;
+  lineNo: number;
+  lineType: LineType;
+  componentId: string | null;
+  itemName: string;
+  quantity: string;
+  unit: UnitType;
+  hsnCode: string;
+  itemRemarks: string;
+} {
+  return {
+    id: crypto.randomUUID(),
+    lineNo,
+    lineType: "component",
+    componentId: null,
+    itemName: componentName,
+    quantity: "",
+    unit: "pieces",
+    hsnCode: "",
+    itemRemarks: "",
+  };
+}
+
+type Line = ReturnType<typeof newLine>;
+
 const num = (s: string) => Number(s.replace(/,/g, "")) || 0;
 
 export function SendMaterialForm({ component }: { component: Component }) {
@@ -49,16 +71,12 @@ export function SendMaterialForm({ component }: { component: Component }) {
   const queryClient = useQueryClient();
   const { items: parties } = useActiveParties();
 
-  // Manufactured Material | Other
-  const [lineType, setLineType] = useState<LineType>("component");
-
   const [partyId, setPartyId] = useState<string | null>(null);
-  const [quantity, setQuantity] = useState("");
-  const [unitPrice, setUnitPrice] = useState("");
-  const [unit, setUnit] = useState<UnitType>(component.unit);
-  const [itemName, setItemName] = useState("");
   const [date, setDate] = useState(todayISO());
+  const [customerRefNo, setCustomerRefNo] = useState("");
+  const [customerRefDate, setCustomerRefDate] = useState("");
   const [notes, setNotes] = useState("");
+  const [lines, setLines] = useState<Line[]>([newLine(1, component.name)]);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -66,14 +84,20 @@ export function SendMaterialForm({ component }: { component: Component }) {
 
   const selectedParty = parties.find((p) => p.id === partyId);
 
-  // Effective unit is locked to the Component Master for Manufactured Material,
-  // user-selected for Other.
-  const effectiveUnit: UnitType =
-    lineType === "component" ? component.unit : unit;
-  const displayName =
-    lineType === "component" ? component.name : itemName.trim();
-
-  const totalAmount = num(quantity) * num(unitPrice);
+  // Our own company details (FROM section) — snapshot onto the document.
+  const { data: ourCompany } = useQuery({
+    queryKey: ["company_settings"],
+    queryFn: async (): Promise<CompanySettings | null> => {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("company_settings")
+        .select("*")
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return (data ?? null) as CompanySettings | null;
+    },
+  });
 
   const createParty = useMutation({
     mutationFn: async (name: string): Promise<PickerItem> => {
@@ -89,18 +113,55 @@ export function SendMaterialForm({ component }: { component: Component }) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["companies"] }),
   });
 
+  // ----- line mutations -----
+  function updateLine(id: string, fn: (l: Line) => Line) {
+    setLines(lines.map((l) => (l.id === id ? fn(l) : l)));
+  }
+
+  function addLine() {
+    setLines([...lines, newLine(lines.length + 1, component.name)]);
+  }
+
+  function removeLine(id: string) {
+    if (lines.length === 1) return;
+    const next = lines.filter((l) => l.id !== id);
+    setLines(next.map((l, i) => ({ ...l, lineNo: i + 1 })));
+  }
+
+  function handleLineType(lineId: string, value: LineType) {
+    setLines((prev) =>
+      prev.map((l) =>
+        l.id === lineId
+          ? {
+              ...l,
+              lineType: value,
+              itemName:
+                value === "component"
+                  ? component.name
+                  : l.itemName === component.name
+                    ? ""
+                    : l.itemName,
+              unit:
+                value === "component" ? component.unit : l.unit,
+            }
+          : l
+      )
+    );
+  }
+
+  // ----- validation -----
   function validate(): boolean {
     const next: Record<string, string> = {};
     if (!partyId) next.party = "Select or add a customer / destination.";
-    const q = Number(quantity);
-    if (!quantity.trim() || Number.isNaN(q) || q <= 0)
-      next.quantity = `Enter a quantity above 0 (${UNIT_LABELS[effectiveUnit]}).`;
-    const up = num(unitPrice);
-    if (!unitPrice.trim() || Number.isNaN(up) || up < 0)
-      next.unitPrice = "Enter a valid unit price (₹).";
-    if (lineType === "other" && !itemName.trim())
-      next.itemName = "Describe the item being sent.";
     if (!date) next.date = "Enter a dispatch date.";
+    const emptyLines = lines.filter(
+      (l) =>
+        !l.itemName.trim() ||
+        !l.quantity.trim() ||
+        num(l.quantity) <= 0
+    );
+    if (emptyLines.length > 0)
+      next.items = "Every item needs a description and a quantity above 0.";
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -125,6 +186,12 @@ export function SendMaterialForm({ component }: { component: Component }) {
     setSaving(true);
     setErrors({});
 
+    // Build FROM snapshot from saved company profile (fallback to defaults).
+    const fromAddress =
+      [ourCompany?.address_line1, ourCompany?.address_line2]
+        .filter(Boolean)
+        .join(", ") || null;
+
     try {
       const created = await createReceivingDocument({
         type: "given",
@@ -132,8 +199,19 @@ export function SendMaterialForm({ component }: { component: Component }) {
         source: "customer",
         companyId: selectedParty.id,
         transactionDate: date,
+        customerRefNo: customerRefNo.trim() || null,
+        customerRefDate: customerRefDate || null,
         notes: notes.trim() || null,
         createdBy: user.id,
+        ourCompany: {
+          companyName: ourCompany?.company_name ?? null,
+          address: fromAddress,
+          city: ourCompany?.city ?? null,
+          state: ourCompany?.state ?? null,
+          pincode: ourCompany?.pincode ?? null,
+          gstin: ourCompany?.gstin ?? null,
+          pan: ourCompany?.pan ?? null,
+        },
         partySnapshot: {
           name: selectedParty.name,
           company: selectedParty.name,
@@ -142,21 +220,24 @@ export function SendMaterialForm({ component }: { component: Component }) {
           contact: selectedParty.contact,
           pincode: selectedParty.pincode,
         },
-        items: [
-          {
-            lineNo: 1,
-            lineType,
-            componentId: lineType === "component" ? component.id : null,
-            itemName: lineType === "component" ? component.name : itemName.trim(),
-            quantity: num(quantity),
-            unit: effectiveUnit,
-            unitPrice: num(unitPrice),
-            gstPercent: 0,
-            subtotal: totalAmount,
-            gstAmount: 0,
-            lineTotal: totalAmount,
-          },
-        ],
+        partyGstin: selectedParty.gstin ?? null,
+        partyState: selectedParty.state ?? null,
+        items: lines.map((l) => ({
+          lineNo: l.lineNo,
+          lineType: l.lineType,
+          componentId:
+            l.lineType === "component" ? component.id : null,
+          itemName: l.itemName.trim(),
+          quantity: num(l.quantity),
+          unit: l.unit,
+          unitPrice: null,
+          gstPercent: 0,
+          hsnCode: l.hsnCode.trim() || null,
+          itemRemarks: l.itemRemarks.trim() || null,
+          subtotal: 0,
+          gstAmount: 0,
+          lineTotal: 0,
+        })),
       });
 
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
@@ -164,17 +245,20 @@ export function SendMaterialForm({ component }: { component: Component }) {
         queryKey: ["component_parties", component.id],
       });
 
-      // Save & Confirm Challan: persist first, then navigate to the Challan
-      // Preview page for the actual saved document. Download is an explicit
-      // user action on that page — never an automatic browser download here.
-      router.push(
+      // Full-page redirect (not router.push): document numbers contain slashes
+      // and a client-side nav can 404 from a stale route manifest; a hard load
+      // always resolves through the server + catch-all route.
+      window.location.replace(
         `/components/${component.id}/documents/${created.document_number}/challan`
       );
     } catch (e) {
+      // Supabase throws a PostgrestError (plain object, not an Error), so
+      // surface its `.message` directly instead of a generic fallback.
+      const raw = (e as { message?: unknown } | null)?.message;
       setErrors({
         form:
-          e instanceof Error
-            ? e.message
+          typeof raw === "string" && raw.trim().length > 0
+            ? raw
             : "Could not save the send document.",
       });
     } finally {
@@ -198,6 +282,14 @@ export function SendMaterialForm({ component }: { component: Component }) {
           <p className="mt-0.5 text-sm text-muted-foreground">
             Record finished material dispatched from AKPC.
           </p>
+          <div className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-1.5">
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+              Component
+            </span>
+            <span className="text-sm font-medium text-foreground">
+              {component.name}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -207,248 +299,157 @@ export function SendMaterialForm({ component }: { component: Component }) {
         </p>
       )}
 
-      {/* Manufactured Material | Other toggle */}
-      <div className="mt-4 rounded-xl border border-border bg-white p-5 shadow-sm">
-        <Label className="text-xs font-semibold uppercase tracking-wider">
-          What are you sending?
-        </Label>
-        <div className="mt-2 flex rounded-lg border border-border bg-zinc-100 p-1 shadow-sm">
-          {(
-            [
-              { value: "component", label: "Manufactured Material" },
-              { value: "other", label: "Other" },
-            ] as { value: LineType; label: string }[]
-          ).map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => setLineType(opt.value)}
-              className={`flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${
-                lineType === opt.value
-                  ? "bg-white text-foreground shadow-sm border border-border/40"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {opt.label}
-            </button>
+      {/* Document details */}
+      <section className="rounded-xl border border-border bg-white">
+        <h2 className="border-b px-5 py-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+          Document Details
+        </h2>
+        <div className="grid gap-4 px-5 py-5 md:grid-cols-12">
+          <Field
+            label="Customer / Destination"
+            error={errors.party}
+            className="md:col-span-4"
+          >
+            <EntityCombobox
+              items={parties.map(toPicker)}
+              selectedId={partyId}
+              placeholder="Search Party Master..."
+              searchPlaceholder="Search party..."
+              emptyText="No parties found."
+              createLabel="Add party"
+              canCreate={Boolean(canCreate)}
+              onSelect={(i) => setPartyId(i.id)}
+              onCreate={(name) => createParty.mutateAsync(name)}
+            />
+          </Field>
+
+          <Field label="DC Date" error={errors.date} className="md:col-span-2">
+            <Input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="h-10"
+            />
+          </Field>
+
+          <Field label="Customer Ref. No." className="md:col-span-3">
+            <Input
+              value={customerRefNo}
+              onChange={(e) => setCustomerRefNo(e.target.value)}
+              placeholder="e.g. PO-2026-001"
+              className="h-10"
+            />
+          </Field>
+
+          <Field label="Customer Ref. Date" className="md:col-span-3">
+            <Input
+              type="date"
+              value={customerRefDate}
+              onChange={(e) => setCustomerRefDate(e.target.value)}
+              className="h-10"
+            />
+          </Field>
+
+          {selectedParty && (
+            <div className="md:col-span-12 rounded-lg border bg-muted/40 p-3 text-xs text-zinc-600">
+              <p className="mb-1 font-medium text-zinc-800">Destination details</p>
+              <p>
+                {selectedParty.name}
+                {selectedParty.location ? ` · ${selectedParty.location}` : ""}
+              </p>
+              {selectedParty.post && <p>{selectedParty.post}</p>}
+              {selectedParty.contact && <p>{selectedParty.contact}</p>}
+              {selectedParty.pincode && <p>{selectedParty.pincode}</p>}
+              {selectedParty.state && <p>{selectedParty.state}</p>}
+              {selectedParty.gstin && <p>GSTIN: {selectedParty.gstin}</p>}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Items */}
+      <section className="mt-4 rounded-xl border border-border bg-white">
+        <div className="flex items-center justify-between border-b px-5 py-3">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+            Material / Goods
+          </h2>
+          <button
+            type="button"
+            onClick={addLine}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700 hover:underline"
+          >
+            <PlusIcon className="size-3.5" /> Add Another Item
+          </button>
+        </div>
+
+        {errors.items ? (
+          <p role="alert" className="px-5 py-1 text-xs font-medium text-red-600">
+            {errors.items}
+          </p>
+        ) : null}
+
+        <div className="grid gap-3 p-4 sm:grid-cols-2 sm:items-start sm:p-5">
+          {lines.map((line) => (
+            <LineCard
+              key={line.id}
+              line={line}
+              component={component}
+              canRemove={lines.length > 1}
+              onUpdate={(fn) => updateLine(line.id, fn)}
+              onRemove={() => removeLine(line.id)}
+              onLineType={(t) => handleLineType(line.id, t)}
+            />
           ))}
         </div>
-      </div>
+      </section>
 
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
-        {/* Left column: main form */}
-        <div className="space-y-4 lg:col-span-7">
-          {/* Basic Details */}
-          <section className="rounded-xl border border-border bg-white">
-            <h2 className="border-b px-5 py-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              Basic Details
-            </h2>
-            <div className="grid gap-4 px-5 py-5 md:grid-cols-12">
-              {/* Item / Component */}
-              <Field
-                label={lineType === "component" ? "Component" : "Item"}
-                error={errors.itemName}
-                className="md:col-span-4"
-              >
-                {lineType === "component" ? (
-                  <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
-                    <div className="h-9 w-9 shrink-0 rounded-md bg-zinc-200 text-zinc-500 flex items-center justify-center text-sm font-semibold">
-                      {component.name.charAt(0)}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-foreground">
-                        {component.name}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {component.part_code ?? "—"} · {UNIT_LABELS[component.unit]}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <Input
-                    value={itemName}
-                    onChange={(e) => setItemName(e.target.value)}
-                    placeholder="Describe item..."
-                    className="h-10"
-                  />
-                )}
-              </Field>
+      {/* Dispatch Details */}
+      <section className="mt-4 rounded-xl border border-border bg-white">
+        <h2 className="border-b px-5 py-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+          Dispatch Details
+        </h2>
+        <div className="grid gap-4 px-5 py-5">
+          <Field label="Notes (Optional)">
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Add any additional remarks..."
+              rows={3}
+              className="w-full rounded-lg border border-border bg-white p-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary"
+            />
+          </Field>
+        </div>
+      </section>
 
-              {/* Customer / Destination */}
-              <Field
-                label="Customer / Destination"
-                error={errors.party}
-                className="md:col-span-4"
-              >
-                <EntityCombobox
-                  items={parties.map(toPicker)}
-                  selectedId={partyId}
-                  placeholder="Search Party Master..."
-                  searchPlaceholder="Search party..."
-                  emptyText="No parties found."
-                  createLabel="Add party"
-                  canCreate={Boolean(canCreate)}
-                  onSelect={(i) => setPartyId(i.id)}
-                  onCreate={(name) => createParty.mutateAsync(name)}
-                />
-              </Field>
-
-              <Field label="Dispatch Date" error={errors.date} className="md:col-span-4">
-                <Input
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="h-10"
-                />
-              </Field>
-
-              {selectedParty && (
-                <div className="md:col-span-12 rounded-lg border bg-muted/40 p-3 text-xs text-zinc-600">
-                  <p className="mb-1 font-medium text-zinc-800">Destination details</p>
-                  <p>
-                    {selectedParty.name}
-                    {selectedParty.location ? ` · ${selectedParty.location}` : ""}
-                  </p>
-                  {selectedParty.post && <p>{selectedParty.post}</p>}
-                  {selectedParty.contact && <p>{selectedParty.contact}</p>}
-                  {selectedParty.pincode && <p>{selectedParty.pincode}</p>}
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* Quantity & Value */}
-          <section className="rounded-xl border border-border bg-white">
-            <h2 className="border-b px-5 py-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              Quantity &amp; Value
-            </h2>
-            <div className="grid gap-4 px-5 py-5 md:grid-cols-12">
-              <Field
-                label={`Quantity (${UNIT_LABELS[effectiveUnit]})`}
-                error={errors.quantity}
-                className="md:col-span-4"
-              >
-                <Input
-                  inputMode="decimal"
-                  placeholder="0"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  className="h-10"
-                />
-              </Field>
-
-              {lineType === "other" && (
-                <Field label="Unit" className="md:col-span-2">
-                  <select
-                    value={unit}
-                    onChange={(e) => setUnit(e.target.value as UnitType)}
-                    className="h-10 w-full rounded-lg border border-border bg-white px-2 text-sm"
-                  >
-                    {UNIT_TYPES.map((u) => (
-                      <option key={u} value={u}>
-                        {UNIT_LABELS[u]}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              )}
-
-              <Field label="Unit Price (₹)" error={errors.unitPrice} className="md:col-span-3">
-                <InputGroup>
-                  <InputGroupAddon align="inline-start">₹</InputGroupAddon>
-                  <InputGroupInput
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    value={unitPrice}
-                    onChange={(e) => setUnitPrice(e.target.value)}
-                  />
-                </InputGroup>
-              </Field>
-
-              <div className="md:col-span-3 rounded-lg border bg-muted/40 p-3 flex items-end justify-between">
-                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Total Amount
-                </span>
-                <span className="text-lg font-semibold text-foreground">
-                  {formatINR(totalAmount)}
-                </span>
-              </div>
-            </div>
-          </section>
-
-          {/* Dispatch Details */}
-          <section className="rounded-xl border border-border bg-white">
-            <h2 className="border-b px-5 py-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              Dispatch Details
-            </h2>
-            <div className="grid gap-4 px-5 py-5">
-              <Field label="Notes (Optional)">
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Add any additional remarks..."
-                  rows={3}
-                  className="w-full rounded-lg border border-border bg-white p-3 text-sm focus:border-primary focus:ring-1 focus:ring-primary"
-                />
-              </Field>
-            </div>
-          </section>
-
-          {errors.form ? (
-            <p
-              role="alert"
-              className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700"
-            >
-              {errors.form}
+      {/* Summary */}
+      <section className="mt-4 rounded-xl border border-border bg-white p-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Total Items:{" "}
+              <span className="text-xl font-semibold text-foreground">
+                {lines.length}
+              </span>
             </p>
-          ) : null}
+            <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {date ? `DC Date: ${formatDate(date)}` : "DC Date: —"}
+              {customerRefNo.trim()
+                ? ` · Ref: ${customerRefNo.trim()}`
+                : ""}
+            </p>
+          </div>
         </div>
 
-        {/* Right column: summary panel */}
-        <div className="lg:col-span-5">
-          <section className="rounded-xl border border-border bg-white p-5 shadow-sm sticky top-4">
-            <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-              Summary
-            </h2>
-            <dl className="mt-4 space-y-3 text-sm">
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Item</dt>
-                <dd className="font-medium text-foreground">
-                  {displayName || "—"}
-                </dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">To</dt>
-                <dd className="font-medium text-foreground">
-                  {selectedParty?.name ?? "—"}
-                </dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Quantity</dt>
-                <dd className="font-medium text-foreground">
-                  {quantity ? `${num(quantity).toLocaleString("en-IN")} ${UNIT_LABELS[effectiveUnit]}` : "—"}
-                </dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Dispatch Date</dt>
-                <dd className="font-medium text-foreground">
-                  {date ? formatDate(date) : "—"}
-                </dd>
-              </div>
-              <div className="flex justify-between border-t border-border pt-3">
-                <dt className="font-semibold text-foreground">Total</dt>
-                <dd className="font-semibold text-foreground">
-                  {formatINR(totalAmount)}
-                </dd>
-              </div>
-            </dl>
-          </section>
-        </div>
-      </div>
+        {errors.form ? (
+          <p
+            role="alert"
+            className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700"
+          >
+            {errors.form}
+          </p>
+        ) : null}
 
-      {/* Footer actions */}
-      <div className="sticky bottom-0 -mx-4 mt-5 border-t bg-white/95 p-4 backdrop-blur sm:mx-0 sm:rounded-xl sm:border">
-        <div className="flex items-center justify-end gap-3">
+        <div className="mt-4 flex items-center justify-end gap-3 border-t border-border pt-4">
           <Button
             type="button"
             variant="outline"
@@ -466,8 +467,172 @@ export function SendMaterialForm({ component }: { component: Component }) {
             {saving ? "Saving…" : "Save & Confirm Challan"}
           </Button>
         </div>
-      </div>
+      </section>
     </div>
+  );
+}
+
+function LineCard({
+  line,
+  component,
+  canRemove,
+  onUpdate,
+  onRemove,
+  onLineType,
+}: {
+  line: Line;
+  component: Component;
+  canRemove: boolean;
+  onUpdate: (fn: (l: Line) => Line) => void;
+  onRemove: () => void;
+  onLineType: (t: LineType) => void;
+}) {
+  return (
+    <article className="rounded-xl border border-border bg-white p-4">
+      <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+          Item {line.lineNo}
+        </span>
+
+        <div className="flex items-center gap-2">
+          {/* Manufactured Material | Other */}
+          <div className="flex rounded-lg border border-border bg-zinc-100 p-0.5">
+            {(["component", "other"] as LineType[]).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => onLineType(t)}
+                className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all ${
+                  line.lineType === t
+                    ? "bg-white text-foreground shadow-sm border border-border/40"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {t === "component" ? "Manufactured Material" : "Other"}
+              </button>
+            ))}
+          </div>
+
+          {canRemove && (
+            <button
+              type="button"
+              onClick={onRemove}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600"
+              title="Remove item"
+            >
+              <Trash2Icon className="size-4" /> Remove
+            </button>
+          )}
+        </div>
+      </header>
+
+      <div className="grid gap-3">
+        {/* Description of Goods */}
+        {line.lineType === "component" ? (
+          <div className="grid gap-1.5">
+            <Label className="text-xs font-semibold uppercase tracking-wider">
+              Description of Goods
+            </Label>
+            <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
+              <div className="h-9 w-9 shrink-0 rounded-md bg-zinc-200 text-zinc-500 flex items-center justify-center text-sm font-semibold">
+                {component.name.charAt(0)}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {component.name}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {component.part_code ?? "—"} · {UNIT_LABELS[component.unit]}
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-1.5">
+            <Label className="text-xs font-semibold uppercase tracking-wider">
+              Description of Goods
+            </Label>
+            <Input
+              value={line.itemName}
+              onChange={(e) =>
+                onUpdate((l) => ({ ...l, itemName: e.target.value }))
+              }
+              placeholder="e.g. Flange YOKE-8585-JW"
+              className="h-10"
+            />
+          </div>
+        )}
+
+        {/* Quantity | Unit */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-1.5">
+            <Label className="text-xs font-semibold uppercase tracking-wider">
+              MOQ / Quantity
+            </Label>
+            <Input
+              inputMode="decimal"
+              placeholder="0"
+              value={line.quantity}
+              onChange={(e) =>
+                onUpdate((l) => ({ ...l, quantity: e.target.value }))
+              }
+              className="h-10"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label className="text-xs font-semibold uppercase tracking-wider">
+              Unit
+            </Label>
+            <select
+              value={line.unit}
+              onChange={(e) =>
+                onUpdate((l) => ({ ...l, unit: e.target.value as UnitType }))
+              }
+              className="h-10 w-full rounded-lg border border-border bg-white px-2 text-sm"
+            >
+              {UNIT_TYPES.map((u) => (
+                <option key={u} value={u}>
+                  {UNIT_LABELS[u]}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {/* HSN/SAC | Remarks */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-1.5">
+            <Label className="text-xs font-semibold uppercase tracking-wider">
+              HSN/SAC
+            </Label>
+            <Input
+              value={line.hsnCode}
+              onChange={(e) =>
+                onUpdate((l) => ({
+                  ...l,
+                  hsnCode: e.target.value.toUpperCase(),
+                }))
+              }
+              placeholder="e.g. 8708"
+              className="h-10 uppercase"
+            />
+          </div>
+          <div className="grid gap-1.5">
+            <Label className="text-xs font-semibold uppercase tracking-wider">
+              Remarks
+            </Label>
+            <Input
+              value={line.itemRemarks}
+              onChange={(e) =>
+                onUpdate((l) => ({ ...l, itemRemarks: e.target.value }))
+              }
+              placeholder="e.g. Return after machining"
+              className="h-10"
+            />
+          </div>
+        </div>
+      </div>
+    </article>
   );
 }
 
