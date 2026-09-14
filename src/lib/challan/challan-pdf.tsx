@@ -27,6 +27,8 @@ const styles = StyleSheet.create({
   brand: {
     fontSize: 16,
     fontWeight: "bold",
+    textTransform: "uppercase",
+    marginTop: 1,
   },
   brandLine: {
     fontSize: 9,
@@ -175,12 +177,11 @@ export function ChallanDocument({
   const hasItems = (items?.length ?? 0) > 0;
 
   const fromName = doc?.our_company_name || "AK Precision Components";
+  const addressLine = [doc?.our_address, doc?.our_city].filter(Boolean).join(", ");
   const fromLines = [
-    doc?.our_address,
-    doc?.our_city,
-    doc?.our_pincode
-      ? [doc.our_state, doc.our_pincode].filter(Boolean).join(" ")
-      : doc?.our_state,
+    addressLine,
+    doc?.our_state,
+    doc?.our_pincode ? `Pin code: ${doc.our_pincode}` : null,
   ].filter(Boolean);
 
   const partyLine = doc?.party_name || doc?.party_company || tx.party_name || tx.party_company || "—";
@@ -244,6 +245,7 @@ export function ChallanDocument({
         {/* Header */}
         <View style={styles.headerRow}>
           <View>
+            <Text style={styles.toLabel}>From</Text>
             <Text style={styles.brand}>{fromName}</Text>
             {fromLines.map((l, i) => (
               <Text key={i} style={styles.brandLine}>

@@ -46,10 +46,11 @@ export function ChallanPreview({
   const [generating, setGenerating] = useState(false);
   const items = doc.items ?? [];
   const fromName = doc.our_company_name || "AK Precision Components";
+  const addressLine = [doc.our_address, doc.our_city].filter(Boolean).join(", ");
   const fromLines = [
-    doc.our_address,
-    doc.our_city,
-    doc.our_pincode ? [doc.our_state, doc.our_pincode].filter(Boolean).join(" ") : doc.our_state,
+    addressLine,
+    doc.our_state,
+    doc.our_pincode ? `Pin code: ${doc.our_pincode}` : null,
   ].filter(Boolean);
   const partyName = doc.party_name || doc.party_company || "—";
   const toLines = [
@@ -130,7 +131,10 @@ export function ChallanPreview({
         {/* Header: FROM (left) + DC metadata (right) */}
         <div className="flex items-start justify-between gap-6">
           <div className="min-w-0 flex-1">
-            <h1 className="text-xl font-bold tracking-tight text-zinc-900">
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              From
+            </p>
+            <h1 className="mt-1 text-xl font-bold uppercase tracking-tight text-zinc-900">
               {fromName}
             </h1>
             <div className="mt-2 space-y-0.5 text-sm text-zinc-600">
