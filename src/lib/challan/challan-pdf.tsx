@@ -8,157 +8,372 @@ import {
   StyleSheet,
   pdf,
 } from "@react-pdf/renderer";
+import {
+  buildChallanView,
+  CHALLAN_GEOMETRY as G,
+  type ChallanView,
+  type ChallanRow,
+} from "@/lib/challan/challan-view";
 import type { Tables } from "@/lib/supabase/database.types";
-import { formatDate } from "@/lib/format";
+
+// ---------------------------------------------------------------------------
+// A4 Delivery/Receiving Challan renderer.
+//
+// The on-screen Challan Preview (challan-preview.tsx) is the approved visual
+// reference. This PDF reproduces that layout as faithfully as @react-pdf
+// allows: same FROM/TO blocks, header metadata grid, item table with explicit
+// per-cell borders (every column separated by a visible vertical rule), empty
+// filler rows, and the Prepared By / Receiver's Signature area. All values and
+// geometry come from the shared challan view model, never hard-coded.
+// ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
   page: {
-    paddingHorizontal: 40,
-    paddingVertical: 32,
-    fontSize: 10,
-    fontFamily: "Helvetica",
-    color: "#1a1a1a",
+    paddingHorizontal: G.padding,
+    paddingVertical: G.padding,
+    backgroundColor: "#ffffff",
   },
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
   },
-  brand: {
-    fontSize: 16,
-    fontWeight: "bold",
-    textTransform: "uppercase",
-    marginTop: 1,
+  fromBlock: {
+    flexGrow: 1,
+    paddingRight: 18,
   },
-  brandLine: {
-    fontSize: 9,
-    color: "#444",
+  fromLabel: {
+    fontSize: G.fontSmall,
+    fontWeight: "bold",
+    color: G.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  brand: {
+    fontSize: G.fontBrand,
+    fontWeight: "bold",
+    color: G.textTitle,
+    textTransform: "uppercase",
+    marginTop: 4,
+  },
+  fromLine: {
+    fontSize: G.fontBody,
+    color: G.textBody,
     marginTop: 1,
   },
   docTitleBlock: {
     alignItems: "flex-end",
   },
   docTitle: {
-    fontSize: 14,
+    fontSize: G.fontTitle,
     fontWeight: "bold",
-    textAlign: "right",
+    color: G.textTitle,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
   },
   metaRow: {
     flexDirection: "row",
-    justifyContent: "flex-end",
-    width: 260,
-    marginTop: 2,
+    marginTop: 3,
   },
   metaLabel: {
-    fontSize: 9,
-    color: "#666",
-    width: 110,
+    fontSize: G.fontBody,
+    color: G.textMuted,
+    width: 96,
   },
   metaValue: {
-    fontSize: 9,
-    width: 150,
+    fontSize: G.fontBody,
+    color: G.textTitle,
+    width: 168,
     textAlign: "right",
   },
+  metaStrong: {
+    fontWeight: "bold",
+  },
   rule: {
-    borderBottomWidth: 1,
-    borderBottomColor: "#999",
+    borderBottomWidth: G.border,
+    borderBottomColor: G.colorRule,
+    borderBottomStyle: "solid",
     marginVertical: 12,
   },
   toBlock: {
-    borderWidth: 1,
-    borderColor: "#aaa",
-    padding: 8,
+    borderWidth: G.border,
+    borderColor: G.colorBox,
+    padding: 9,
   },
   toLabel: {
-    fontSize: 9,
-    color: "#777",
+    fontSize: G.fontSmall,
+    fontWeight: "bold",
+    color: G.textMuted,
     textTransform: "uppercase",
+    letterSpacing: 0.6,
   },
   toName: {
-    fontSize: 12,
+    fontSize: G.fontName,
     fontWeight: "bold",
-    marginTop: 2,
+    color: G.textTitle,
+    marginTop: 3,
   },
   toLine: {
-    fontSize: 10,
-    color: "#444",
+    fontSize: G.fontBody,
+    color: G.textAddress,
     marginTop: 1,
   },
   table: {
-    width: "100%",
-    marginTop: 12,
+    marginTop: 15,
+    borderLeftWidth: G.border,
+    borderLeftColor: G.colorTable,
+    borderRightWidth: G.border,
+    borderRightColor: G.colorTable,
+    borderBottomWidth: G.border,
+    borderBottomColor: G.colorTable,
   },
-  head: {
+  headRow: {
     flexDirection: "row",
-    borderWidth: 1,
-    borderColor: "#999",
-    backgroundColor: "#f0f0f0",
-    paddingVertical: 5,
+    backgroundColor: G.bgHeader,
   },
-  row: {
-    flexDirection: "row",
-    borderWidth: 1,
-    borderTopWidth: 0,
-    borderColor: "#aaa",
+  headCell: {
     paddingVertical: 6,
+    paddingHorizontal: 5,
+    borderTopWidth: G.border,
+    borderTopColor: G.colorTable,
   },
-  headText: { fontWeight: "bold", fontSize: 9 },
-  cellSno: { width: "8%", fontSize: 9, textAlign: "center" },
-  cellHsn: { width: "13%", fontSize: 9 },
-  cellDesc: { width: "42%", fontSize: 10 },
-  cellQty: { width: "10%", fontSize: 9, textAlign: "right" },
-  cellUnit: { width: "9%", fontSize: 9 },
-  cellRem: { width: "18%", fontSize: 9 },
-  headCenter: { textAlign: "center" },
-  footer: {
-    position: "absolute",
-    bottom: 32,
-    left: 40,
-    right: 40,
+  headText: {
+    fontSize: G.fontSmall,
+    fontWeight: "bold",
+    color: G.textHeader,
+  },
+  dataRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    fontSize: 9,
-    color: "#666",
-    borderTopWidth: 1,
-    borderTopColor: "#ccc",
-    paddingTop: 8,
+  },
+  cell: {
+    paddingVertical: 6,
+    paddingHorizontal: 5,
+    borderTopWidth: G.border,
+    borderTopColor: G.colorTable,
+  },
+  // per-column cell styles (borderRight added where needed below)
+  cSno: { width: G.colSno, fontSize: G.fontBody, color: G.textBody, textAlign: "center" as const },
+  cHsn: { width: G.colHsn, fontSize: G.fontBody, color: G.textBody },
+  cDesc: { width: G.colDesc, fontSize: G.fontBody },
+  cMoq: { width: G.colMoq, fontSize: G.fontBody, color: G.textBody, textAlign: "right" as const },
+  cUnit: { width: G.colUnit, fontSize: G.fontBody, color: G.textBody },
+  cRem: { width: G.colRem, fontSize: G.fontBody, color: G.textAddress },
+  cDescName: { fontSize: G.fontBody, fontWeight: "bold" as const, color: G.textTitle },
+  cDescPart: { fontSize: G.fontSmall, color: G.textMuted, marginTop: 1 },
+  emptyCell: {
+    minHeight: G.rowEmpty,
+    paddingVertical: 4,
+    paddingHorizontal: 5,
+    borderTopWidth: G.border,
+    borderTopColor: G.colorTable,
   },
   sigRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 80,
+    marginTop: 36,
   },
-  sigBlock: {
-    flexDirection: "column",
-    alignItems: "center",
-    width: "45%",
+  sigBlockPrepared: {
+    width: "50%",
+  },
+  sigBlockReceiver: {
+    width: "33.33%",
   },
   sigLine: {
-    width: "100%",
-    borderBottomWidth: 1,
+    height: 42,
+    borderBottomWidth: G.border,
     borderBottomStyle: "dashed",
-    borderBottomColor: "#999",
-    height: 30,
+    borderBottomColor: G.colorRule,
   },
   sigLabel: {
-    fontSize: 9,
-    color: "#666",
+    fontSize: G.fontSmall,
+    color: G.textMuted,
     textTransform: "uppercase",
-    marginTop: 2,
+    letterSpacing: 0.6,
+    marginTop: 3,
+    textAlign: "center" as const,
   },
 });
 
 type Tx = Tables<"transactions"> & { party_name: string | null };
-type DocItem = Tables<"receiving_document_items">;
-type FullDoc = Tables<"receiving_documents">;
 
-const UNIT_SHORT: Record<string, string> = {
-  pieces: "Nos",
-  kg: "Kg",
-  meter: "Mtr",
-  litre: "Ltr",
-  set: "Set",
+const cellBorder = {
+  borderRightWidth: G.border,
+  borderRightColor: G.colorTable,
+  borderRightStyle: "solid" as const,
 };
+
+const colRightBorder = (include: boolean) => (include ? cellBorder : {});
+
+function HeadCell({
+  children,
+  width,
+  right,
+  align,
+  last,
+}: {
+  children: string;
+  width: number;
+  right: boolean;
+  align?: "left" | "center" | "right";
+  last?: boolean;
+}) {
+  return (
+    <View
+      style={[
+        styles.headCell,
+        { width },
+        right ? styles.cMoq : {},
+        colRightBorder(!last),
+      ]}
+    >
+      <Text
+        style={[
+          styles.headText,
+          ...(align === "center" ? [{ textAlign: "center" as const }] : []),
+          ...(right ? [{ textAlign: "right" as const }] : []),
+        ]}
+      >
+        {children}
+      </Text>
+    </View>
+  );
+}
+
+function DataRow({ row }: { row: ChallanRow }) {
+  const descChild = row.showPartCode && row.partCode ? (
+    <>
+      <Text style={styles.cDescName}>{row.description}</Text>
+      <Text style={styles.cDescPart}>{row.partCode}</Text>
+    </>
+  ) : (
+    <Text style={styles.cDescName}>{row.description}</Text>
+  );
+  return (
+    <View style={styles.dataRow}>
+      <View style={[styles.cell, styles.cSno, colRightBorder(true)]}>
+        <Text>{row.sno}</Text>
+      </View>
+      <View style={[styles.cell, styles.cHsn, colRightBorder(true)]}>
+        <Text>{row.hsn}</Text>
+      </View>
+      <View style={[styles.cell, styles.cDesc, colRightBorder(true)]}>
+        {descChild}
+      </View>
+      <View style={[styles.cell, styles.cMoq, colRightBorder(true)]}>
+        <Text style={[styles.cMoq]}>{row.qty}</Text>
+      </View>
+      <View style={[styles.cell, styles.cUnit, colRightBorder(true)]}>
+        <Text>{row.unit}</Text>
+      </View>
+      <View style={[styles.cell, styles.cRem, colRightBorder(false)]}>
+        <Text>{row.remarks}</Text>
+      </View>
+    </View>
+  );
+}
+
+function EmptyRow() {
+  return (
+    <View style={styles.dataRow}>
+      <View style={[styles.emptyCell, styles.cSno, colRightBorder(true)]} />
+      <View style={[styles.emptyCell, styles.cHsn, colRightBorder(true)]} />
+      <View style={[styles.emptyCell, styles.cDesc, colRightBorder(true)]} />
+      <View style={[styles.emptyCell, styles.cMoq, colRightBorder(true)]} />
+      <View style={[styles.emptyCell, styles.cUnit, colRightBorder(true)]} />
+      <View style={[styles.emptyCell, styles.cRem, colRightBorder(false)]} />
+    </View>
+  );
+}
+
+function ChallanBody({ view }: { view: ChallanView }) {
+  return (
+    <>
+      {/* Header: FROM (left) + DELIVERY CHALLAN metadata (right) */}
+      <View style={styles.headerRow}>
+        <View style={styles.fromBlock}>
+          <Text style={styles.fromLabel}>{view.fromLabel}</Text>
+          <Text style={styles.brand}>{view.fromName}</Text>
+          {view.fromLines.map((l, i) => (
+            <Text key={i} style={styles.fromLine}>
+              {l}
+            </Text>
+          ))}
+        </View>
+        <View style={styles.docTitleBlock}>
+          <Text style={styles.docTitle}>{view.documentTitle}</Text>
+          {view.meta.map((m) => (
+            <View key={m.label} style={styles.metaRow}>
+              <Text style={styles.metaLabel}>{m.label}</Text>
+              <Text style={[styles.metaValue, ...(m.strong ? [styles.metaStrong] : [])]}>
+                {m.value}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.rule} />
+
+      {/* TO block */}
+      <View style={styles.toBlock}>
+        <Text style={styles.toLabel}>{view.toLabel}</Text>
+        <Text style={styles.toName}>{view.toName}</Text>
+        {view.toLines.map((l, i) => (
+          <Text key={i} style={styles.toLine}>
+            {l}
+          </Text>
+        ))}
+        {view.toContact ? <Text style={styles.toLine}>{view.toContact}</Text> : null}
+        {view.toGstin ? (
+          <Text style={styles.toLine}>GST No: {view.toGstin}</Text>
+        ) : null}
+      </View>
+
+      {/* Item table */}
+      <View style={styles.table}>
+        <View style={styles.headRow}>
+          <HeadCell last={false} right={false} align="center" width={G.colSno}>
+            S. No.
+          </HeadCell>
+          <HeadCell last={false} right={false} width={G.colHsn}>
+            HSN/SAC
+          </HeadCell>
+          <HeadCell last={false} right={false} width={G.colDesc}>
+            Description of Goods
+          </HeadCell>
+          <HeadCell last={false} right width={G.colMoq}>
+            MOQ
+          </HeadCell>
+          <HeadCell last={false} right={false} width={G.colUnit}>
+            Unit
+          </HeadCell>
+          <HeadCell last right={false} width={G.colRem}>
+            Remarks
+          </HeadCell>
+        </View>
+
+        {view.rows.map((row, i) => (
+          <DataRow key={i} row={row} />
+        ))}
+        {Array.from({ length: view.emptyRows }).map((_, i) => (
+          <EmptyRow key={i} />
+        ))}
+      </View>
+
+      {/* Signature footer */}
+      <View style={styles.sigRow}>
+        <View style={styles.sigBlockPrepared}>
+          <View style={styles.sigLine} />
+          <Text style={styles.sigLabel}>{view.preparedBy}</Text>
+        </View>
+        <View style={styles.sigBlockReceiver}>
+          <View style={styles.sigLine} />
+          <Text style={styles.sigLabel}>{view.receiver}</Text>
+        </View>
+      </View>
+    </>
+  );
+}
 
 export function ChallanDocument({
   tx,
@@ -166,169 +381,32 @@ export function ChallanDocument({
   componentUnit,
   items,
   doc,
+  partCode,
 }: {
   tx: Tx;
   componentName: string;
   componentUnit: string;
-  items?: DocItem[] | null;
-  doc?: FullDoc | null;
+  items?: Tables<"receiving_document_items">[] | null;
+  doc?: Tables<"receiving_documents"> | null;
+  partCode?: string | null;
 }) {
-  const isReceive = tx.type === "received";
+  const data = doc ?? (tx as unknown as Tables<"receiving_documents"> & {
+    items?: Tables<"receiving_document_items">[];
+  });
   const hasItems = (items?.length ?? 0) > 0;
 
-  const fromName = doc?.our_company_name || "AK Precision Components";
-  const addressLine = [doc?.our_address, doc?.our_city].filter(Boolean).join(", ");
-  const fromLines = [
-    addressLine,
-    doc?.our_state,
-    doc?.our_pincode ? `Pin code: ${doc.our_pincode}` : null,
-  ].filter(Boolean);
-
-  const partyLine = doc?.party_name || doc?.party_company || tx.party_name || tx.party_company || "—";
-  const toLines = [
-    doc?.party_location ?? tx.party_location,
-    doc?.party_post ?? tx.party_post,
-    (doc?.party_pincode ?? tx.party_pincode)
-      ? [doc?.party_state, doc?.party_pincode ?? tx.party_pincode]
-          .filter(Boolean)
-          .join(" ")
-      : doc?.party_state,
-  ].filter(Boolean);
-
-  const meta: { label: string; value: string }[] = [
-    { label: "DC No", value: doc?.document_number ?? tx.transaction_number },
-    { label: "DC Date", value: formatDate(doc?.transaction_date ?? tx.transaction_date) },
-    { label: "Customer Ref. No.", value: doc?.customer_ref_no ?? "—" },
-    {
-      label: "Customer Ref. Date",
-      value: doc?.customer_ref_date ? formatDate(doc.customer_ref_date) : "—",
-    },
-    { label: "GST No", value: doc?.our_gstin ?? "—" },
-    { label: "PAN No", value: doc?.our_pan ?? "—" },
-  ];
-
-  const renderRows = () => {
-    if (hasItems) {
-      return items!.map((item, i) => (
-        <View style={styles.row} key={item.id} wrap={false}>
-          <Text style={styles.cellSno}>{i + 1}</Text>
-          <Text style={styles.cellHsn}>{item.hsn_code || ""}</Text>
-          <View style={{ width: "42%" }}>
-            <Text style={{ fontSize: 10 }}>{item.item_name}</Text>
-          </View>
-          <Text style={styles.cellQty}>
-            {new Intl.NumberFormat("en-IN").format(Number(item.quantity))}
-          </Text>
-          <Text style={styles.cellUnit}>{UNIT_SHORT[item.unit] ?? item.unit}</Text>
-          <Text style={styles.cellRem}>{item.item_remarks || ""}</Text>
-        </View>
-      ));
-    }
-    return (
-      <View style={styles.row}>
-        <Text style={styles.cellSno}>1</Text>
-        <Text style={styles.cellHsn}>{""}</Text>
-        <Text style={styles.cellDesc}>{componentName}</Text>
-        <Text style={styles.cellQty}>{tx.pieces}</Text>
-        <Text style={styles.cellUnit}>{componentUnit}</Text>
-        <Text style={styles.cellRem}>{""}</Text>
-      </View>
-    );
-  };
-
-  const rowCount = hasItems ? items!.length : 1;
-  const fillerRows = Math.max(0, 8 - rowCount);
+  const view = buildChallanView(
+    data,
+    partCode ?? null,
+    !hasItems
+      ? { name: componentName, qty: Number(tx.pieces ?? 0), unitShort: componentUnit }
+      : null
+  );
 
   return (
     <Document>
       <Page size="A4" style={styles.page}>
-        {/* Header */}
-        <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.toLabel}>From</Text>
-            <Text style={styles.brand}>{fromName}</Text>
-            {fromLines.map((l, i) => (
-              <Text key={i} style={styles.brandLine}>
-                {l}
-              </Text>
-            ))}
-          </View>
-          <View style={styles.docTitleBlock}>
-            <Text style={styles.docTitle}>
-              {isReceive ? "RECEIVING CHALLAN" : "DELIVERY CHALLAN"}
-            </Text>
-            {meta.map((m) => (
-              <View key={m.label} style={styles.metaRow}>
-                <Text style={styles.metaLabel}>{m.label}</Text>
-                <Text style={styles.metaValue}>{m.value}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.rule} />
-
-        {/* TO block */}
-        <View style={styles.toBlock}>
-          <Text style={styles.toLabel}>{isReceive ? "Received From" : "To"}</Text>
-          <Text style={styles.toName}>{partyLine}</Text>
-          {toLines.map((l, i) => (
-            <Text key={i} style={styles.toLine}>
-              {l}
-            </Text>
-          ))}
-          {doc?.party_contact ? (
-            <Text style={styles.toLine}>{doc.party_contact}</Text>
-          ) : null}
-          {doc?.party_gstin ? (
-            <Text style={styles.toLine}>GST No: {doc.party_gstin}</Text>
-          ) : null}
-        </View>
-
-        {/* Item table */}
-        <View style={styles.table}>
-          <View style={styles.head}>
-            <Text style={[styles.cellSno, styles.headText]}>S. No.</Text>
-            <Text style={[styles.cellHsn, styles.headText]}>HSN/SAC</Text>
-            <Text style={[styles.cellDesc, styles.headText]}>
-              Description of Goods
-            </Text>
-            <Text style={[styles.cellQty, styles.headText, styles.headCenter]}>MOQ</Text>
-            <Text style={[styles.cellUnit, styles.headText]}>Unit</Text>
-            <Text style={[styles.cellRem, styles.headText]}>Remarks</Text>
-          </View>
-
-          {renderRows()}
-          {Array.from({ length: fillerRows }).map((_, i) => (
-            <View style={styles.row} key={`empty-${i}`}>
-              <Text style={styles.cellSno}>{" "}</Text>
-              <Text style={styles.cellHsn}>{" "}</Text>
-              <Text style={styles.cellDesc}>{" "}</Text>
-              <Text style={styles.cellQty}>{" "}</Text>
-              <Text style={styles.cellUnit}>{" "}</Text>
-              <Text style={styles.cellRem}>{" "}</Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Signature footer */}
-        <View style={styles.sigRow}>
-          <View style={styles.sigBlock}>
-            <View style={styles.sigLine} />
-            <Text style={styles.sigLabel}>
-              {isReceive ? "Authorised Signatory" : "Prepared By"}
-            </Text>
-          </View>
-          <View style={styles.sigBlock}>
-            <View style={styles.sigLine} />
-            <Text style={styles.sigLabel}>Receiver&apos;s Signature</Text>
-          </View>
-        </View>
-
-        <View style={styles.footer}>
-          <Text>{doc?.our_company_name || "AK Precision Components"}</Text>
-          <Text>This challan is computer generated.</Text>
-        </View>
+        <ChallanBody view={view} />
       </Page>
     </Document>
   );
@@ -339,8 +417,9 @@ export async function renderChallanPdf(
   tx: Tx,
   componentName: string,
   componentUnit: string,
-  items?: DocItem[] | null,
-  doc?: FullDoc | null
+  items?: Tables<"receiving_document_items">[] | null,
+  doc?: Tables<"receiving_documents"> | null,
+  partCode?: string | null
 ): Promise<Blob> {
   const docEl = (
     <ChallanDocument
@@ -349,6 +428,7 @@ export async function renderChallanPdf(
       componentUnit={componentUnit}
       items={items}
       doc={doc}
+      partCode={partCode}
     />
   );
   return pdf(docEl).toBlob();

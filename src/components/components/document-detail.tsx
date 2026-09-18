@@ -62,7 +62,8 @@ export function DocumentDetail({
         component.name,
         UNIT_LABELS[component.unit],
         hasItems ? transaction.items : null,
-        transaction as never
+        transaction as never,
+        component.part_code
       );
       setPdfUrl(URL.createObjectURL(blob));
     } finally {

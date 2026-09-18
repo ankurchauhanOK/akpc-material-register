@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import Link from "next/link";
 import { DownloadIcon, FileTextIcon, PrinterIcon, RotateCcwIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { renderChallanPdf } from "@/lib/challan/challan-pdf";
-import { formatDate } from "@/lib/format";
+import { buildChallanView } from "@/lib/challan/challan-view";
 import { UNIT_LABELS } from "@/lib/supabase/types";
 import type { Tables, Enums } from "@/lib/supabase/database.types";
 
@@ -15,15 +15,6 @@ type UnitType = Enums<"unit_type">;
 
 type PreviewDoc = Tables<"receiving_documents"> & {
   items: DocItem[];
-};
-
-/** Map an item's saved unit to a short label for the printed preview. */
-const UNIT_SHORT: Record<string, string> = {
-  pieces: "Nos",
-  kg: "Kg",
-  meter: "Mtr",
-  litre: "Ltr",
-  set: "Set",
 };
 
 /**
@@ -44,20 +35,11 @@ export function ChallanPreview({
   partCode: string | null;
 }) {
   const [generating, setGenerating] = useState(false);
-  const items = doc.items ?? [];
-  const fromName = doc.our_company_name || "AK Precision Components";
-  const addressLine = [doc.our_address, doc.our_city].filter(Boolean).join(", ");
-  const fromLines = [
-    addressLine,
-    doc.our_state,
-    doc.our_pincode ? `Pin code: ${doc.our_pincode}` : null,
-  ].filter(Boolean);
-  const partyName = doc.party_name || doc.party_company || "—";
-  const toLines = [
-    doc.party_location,
-    doc.party_post,
-    doc.party_pincode ? [doc.party_state, doc.party_pincode].filter(Boolean).join(" ") : doc.party_state,
-  ].filter(Boolean);
+  const view = buildChallanView(doc, partCode);
+  const fromName = view.fromName;
+  const fromLines = view.fromLines;
+  const partyName = view.toName;
+  const toLines = view.toLines;
 
   async function downloadPdf() {
     if (generating) return;
@@ -76,8 +58,9 @@ export function ChallanPreview({
         } as Tables<"transactions"> & { party_name: string | null },
         component.name,
         UNIT_LABELS[component.unit as UnitType],
-        items,
-        doc
+        doc.items ?? [],
+        doc,
+        partCode
       );
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -145,23 +128,17 @@ export function ChallanPreview({
           </div>
           <div className="shrink-0 text-right">
             <p className="text-lg font-bold uppercase tracking-wide text-zinc-900">
-              Delivery Challan
+              {view.documentTitle}
             </p>
             <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] gap-x-6 gap-y-1 text-sm [&>*:nth-child(odd)]:text-zinc-500">
-              <span className="text-left">DC No</span>
-              <span className="text-right font-semibold">{doc.document_number}</span>
-              <span className="text-left">DC Date</span>
-              <span className="text-right font-medium">{formatDate(doc.transaction_date)}</span>
-              <span className="text-left">Customer Ref. No.</span>
-              <span className="text-right">{doc.customer_ref_no ?? "—"}</span>
-              <span className="text-left">Customer Ref. Date</span>
-              <span className="text-right">
-                {doc.customer_ref_date ? formatDate(doc.customer_ref_date) : "—"}
-              </span>
-              <span className="text-left">GST No</span>
-              <span className="text-right">{doc.our_gstin ?? "—"}</span>
-              <span className="text-left">PAN No</span>
-              <span className="text-right">{doc.our_pan ?? "—"}</span>
+              {view.meta.map((m) => (
+                <Fragment key={m.label}>
+                  <span className="text-left">{m.label}</span>
+                  <span className={`text-right ${m.strong ? "font-semibold" : ""}`}>
+                    {m.value}
+                  </span>
+                </Fragment>
+              ))}
             </div>
           </div>
         </div>
@@ -178,10 +155,10 @@ export function ChallanPreview({
             {toLines.map((l, i) => (
               <p key={i}>{l}</p>
             ))}
-            {doc.party_contact && <p>{doc.party_contact}</p>}
+            {view.toContact && <p>{view.toContact}</p>}
           </div>
           <p className="mt-1 text-sm text-zinc-700">
-            {doc.party_gstin ? `GST No: ${doc.party_gstin}` : ""}
+            {view.toGstin ? `GST No: ${view.toGstin}` : ""}
           </p>
         </div>
 
@@ -198,32 +175,32 @@ export function ChallanPreview({
             </tr>
           </thead>
           <tbody>
-            {items.map((item, i) => (
-              <tr key={item.id} className="border border-zinc-400">
-                <td className="border border-zinc-400 px-2 py-2 text-center text-zinc-600">{i + 1}</td>
+            {view.rows.map((row, i) => (
+              <tr key={i} className="border border-zinc-400">
+                <td className="border border-zinc-400 px-2 py-2 text-center text-zinc-600">{row.sno}</td>
                 <td className="border border-zinc-400 px-2 py-2 text-zinc-600">
-                  {item.hsn_code || "—"}
+                  {row.hsn}
                 </td>
                 <td className="border border-zinc-400 px-2 py-2 text-zinc-900">
-                  <p className="font-medium">{item.item_name}</p>
-                  {item.line_type === "component" && partCode ? (
-                    <p className="text-xs text-zinc-500">{partCode}</p>
+                  <p className="font-medium">{row.description}</p>
+                  {row.showPartCode && row.partCode ? (
+                    <p className="text-xs text-zinc-500">{row.partCode}</p>
                   ) : null}
                 </td>
                 <td className="border border-zinc-400 px-2 py-2 text-right">
-                  {new Intl.NumberFormat("en-IN").format(Number(item.quantity))}
+                  {row.qty}
                 </td>
                 <td className="border border-zinc-400 px-2 py-2">
-                  {UNIT_SHORT[item.unit] ?? item.unit}
+                  {row.unit}
                 </td>
                 <td className="border border-zinc-400 px-2 py-2 text-zinc-700">
-                  {item.item_remarks || "—"}
+                  {row.remarks}
                 </td>
               </tr>
             ))}
             {/* Empty rows to keep the physical form format */}
-            {items.length < 8 &&
-              Array.from({ length: 8 - items.length }).map((_, i) => (
+            {view.emptyRows > 0 &&
+              Array.from({ length: view.emptyRows }).map((_, i) => (
                 <tr key={`empty-${i}`} className="border border-zinc-400">
                   <td className="h-7 border border-zinc-400 px-2 py-2" />
                   <td className="border border-zinc-400 px-2 py-2" />
