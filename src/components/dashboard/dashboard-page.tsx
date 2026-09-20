@@ -63,7 +63,7 @@ export function DashboardPage() {
               <ArrowDownLeftIcon className="size-4" /> Receive
             </Link>
             <Link
-              href="/components?action=send"
+              href="/give"
               className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-akpc-send px-4 text-[13px] font-semibold text-white transition-colors hover:brightness-110"
             >
               <ArrowUpRightIcon className="size-4" /> Send
@@ -115,7 +115,7 @@ export function DashboardPage() {
                   <ArrowDownLeftIcon className="size-4" /> Receive
                 </Link>
                 <Link
-                  href="/components?action=send"
+                  href="/give"
                   className="inline-flex h-10 items-center gap-1.5 rounded-[10px] bg-orange-600 px-3.5 text-[13px] font-semibold text-white transition-colors hover:bg-orange-700"
                 >
                   <ArrowUpRightIcon className="size-4" /> Send

@@ -52,6 +52,13 @@ export function TransactionEditDialog({
   const { items: materials } = useActiveMaterials();
   const { items: companies } = useActiveCompanies();
 
+  // v2 documents (receiving_documents) have a different edit surface than
+  // legacy transaction rows. By design (RLS + immutable line items), only
+  // the header is editable and only the destination + date + party snapshot
+  // can change — never a material/component master, quantity, or challan.
+  const isV2 =
+    transaction.source === "documents" && transaction.document_id != null;
+
   const [materialId, setMaterialId] = useState<string>(transaction.material_id);
   const [companyId, setCompanyId] = useState<string>(transaction.company_id);
   const [pieces, setPieces] = useState(String(transaction.pieces));
@@ -65,22 +72,26 @@ export function TransactionEditDialog({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
 
-  const roleAllowed =
-    role === "admin" ? true : role === "operator";
+  // v2 header updates are admin-only (RLS). Legacy keeps operator editing.
+  const roleAllowed = isV2
+    ? role === "admin"
+    : role === "admin" || role === "operator";
   // RLS is the real guard; we also surface the same UX hint here.
   // (owner + 24h is enforced server-side by the update policy.)
 
   function validate(): boolean {
     const next: Record<string, string> = {};
-    if (!materialId) next.material = "Select a material.";
     if (!companyId) next.company = "Select a company.";
-    const p = Number(pieces);
-    if (!pieces.trim() || !Number.isInteger(p) || p <= 0)
-      next.pieces = "Enter a whole number of pieces above 0.";
-    const a = Number(amount.replace(/,/g, ""));
-    if (amount.trim() && (Number.isNaN(a) || a < 0))
-      next.amount = "Enter a valid amount.";
     if (!date) next.date = "Enter a date.";
+    if (!isV2) {
+      if (!materialId) next.material = "Select a material.";
+      const p = Number(pieces);
+      if (!pieces.trim() || !Number.isInteger(p) || p <= 0)
+        next.pieces = "Enter a whole number of pieces above 0.";
+      const a = Number(amount.replace(/,/g, ""));
+      if (amount.trim() && (Number.isNaN(a) || a < 0))
+        next.amount = "Enter a valid amount.";
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   }
@@ -111,14 +122,33 @@ export function TransactionEditDialog({
         targetPath = uploadedNewPath;
       }
 
-      await updateTransaction(transaction.id, {
-        materialId: materialId!,
-        companyId: companyId!,
-        pieces: Number(pieces),
-        totalAmount: Number(amount.replace(/,/g, "")) || 0,
-        transactionDate: date,
-        challanPath: targetPath,
-      });
+      const party = companies.find((c) => c.id === companyId);
+
+      await updateTransaction(
+        isV2
+          ? { source: "documents", documentId: transaction.document_id! }
+          : { source: "transactions", id: transaction.id },
+        {
+          materialId: materialId!,
+          companyId: companyId!,
+          pieces: Number(pieces),
+          totalAmount: Number(amount.replace(/,/g, "")) || 0,
+          transactionDate: date,
+          challanPath: targetPath,
+          partySnapshot: party
+            ? {
+                name: party.name,
+                company: party.name,
+                location: party.location,
+                post: party.post,
+                contact: party.contact,
+                pincode: party.pincode,
+              }
+            : undefined,
+          partyGstin: party?.gstin ?? null,
+          partyState: party?.state ?? null,
+        }
+      );
 
       // Update succeeded — clean up the old challan if it was replaced/removed.
       const challanChanged =
@@ -149,34 +179,38 @@ export function TransactionEditDialog({
         <DialogTitle>Edit {transaction.transaction_number}</DialogTitle>
         <DialogDescription>
           Type is fixed ({transaction.type === "received" ? "Received" : "Given"}).
-          {role === "operator" && " Operators can only edit their own records within 24 hours."}
+          {isV2
+            ? " Document records: only destination & date can be edited (line items are locked)."
+            : role === "operator" && " Operators can only edit their own records within 24 hours."}
         </DialogDescription>
 
         <div className="grid gap-4">
-          <Field label="Material" error={errors.material}>
-            <EntityCombobox
-              items={materials.map(toPicker)}
-              selectedId={materialId}
-              placeholder="Select material"
-              searchPlaceholder="Search material…"
-              emptyText="No materials found."
-              createLabel="Add material"
-              canCreate={canCreateMasters}
-              onSelect={(i) => setMaterialId(i.id)}
-              onCreate={async (name) => {
-                const supabase = createClient();
-                const { data, error } = await supabase
-                  .from("materials")
-                  .insert({ name })
-                  .select("*")
-                  .single();
-                if (error) throw new Error("Could not add material.");
-                const item = toPicker(data as { id: string; name: string });
-                setMaterialId(item.id);
-                return item;
-              }}
-            />
-          </Field>
+          {!isV2 && (
+            <Field label="Material" error={errors.material}>
+              <EntityCombobox
+                items={materials.map(toPicker)}
+                selectedId={materialId}
+                placeholder="Select material"
+                searchPlaceholder="Search material…"
+                emptyText="No materials found."
+                createLabel="Add material"
+                canCreate={canCreateMasters}
+                onSelect={(i) => setMaterialId(i.id)}
+                onCreate={async (name) => {
+                  const supabase = createClient();
+                  const { data, error } = await supabase
+                    .from("materials")
+                    .insert({ name })
+                    .select("*")
+                    .single();
+                  if (error) throw new Error("Could not add material.");
+                  const item = toPicker(data as { id: string; name: string });
+                  setMaterialId(item.id);
+                  return item;
+                }}
+              />
+            </Field>
+          )}
 
           <Field label={transaction.type === "received" ? "From" : "To"} error={errors.company}>
             <EntityCombobox
@@ -203,29 +237,33 @@ export function TransactionEditDialog({
             />
           </Field>
 
-          <Field label="Pieces" error={errors.pieces}>
-            <InputGroup>
-              <InputGroupInput
-                inputMode="numeric"
-                placeholder="0"
-                value={pieces}
-                onChange={(e) => setPieces(e.target.value)}
-              />
-              <InputGroupAddon align="inline-end">pcs</InputGroupAddon>
-            </InputGroup>
-          </Field>
+          {!isV2 && (
+            <>
+              <Field label="Pieces" error={errors.pieces}>
+                <InputGroup>
+                  <InputGroupInput
+                    inputMode="numeric"
+                    placeholder="0"
+                    value={pieces}
+                    onChange={(e) => setPieces(e.target.value)}
+                  />
+                  <InputGroupAddon align="inline-end">pcs</InputGroupAddon>
+                </InputGroup>
+              </Field>
 
-          <Field label="Total amount" error={errors.amount}>
-            <InputGroup>
-              <InputGroupAddon align="inline-start">₹</InputGroupAddon>
-              <InputGroupInput
-                inputMode="decimal"
-                placeholder="0.00"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-              />
-            </InputGroup>
-          </Field>
+              <Field label="Total amount" error={errors.amount}>
+                <InputGroup>
+                  <InputGroupAddon align="inline-start">₹</InputGroupAddon>
+                  <InputGroupInput
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                  />
+                </InputGroup>
+              </Field>
+            </>
+          )}
 
           <Field label="Date" error={errors.date}>
             <Input
@@ -236,40 +274,42 @@ export function TransactionEditDialog({
             />
           </Field>
 
-          <Field
-            label="Challan"
-            error={errors.challan}
-            hint={
-              removeChallanFlag
-                ? "Challan will be removed."
-                : newChallan
-                ? "A new challan will replace the existing one."
-                : undefined
-            }
-          >
-            {removeChallanFlag ? (
-              <p className="text-sm text-zinc-500">
-                Current challan removed. Save to apply.
-              </p>
-            ) : (
-              <ChallanUploader file={newChallan} onChange={setNewChallan} />
-            )}
-            {transaction.challan_path && !removeChallanFlag && (
-              <div className="flex items-center justify-between gap-2 text-sm">
-                <span className="text-muted-foreground">
-                  Current: challan attached
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setRemoveChallanFlag(true)}
-                >
-                  Remove challan
-                </Button>
-              </div>
-            )}
-          </Field>
+          {!isV2 && (
+            <Field
+              label="Challan"
+              error={errors.challan}
+              hint={
+                removeChallanFlag
+                  ? "Challan will be removed."
+                  : newChallan
+                  ? "A new challan will replace the existing one."
+                  : undefined
+              }
+            >
+              {removeChallanFlag ? (
+                <p className="text-sm text-zinc-500">
+                  Current challan removed. Save to apply.
+                </p>
+              ) : (
+                <ChallanUploader file={newChallan} onChange={setNewChallan} />
+              )}
+              {transaction.challan_path && !removeChallanFlag && (
+                <div className="flex items-center justify-between gap-2 text-sm">
+                  <span className="text-muted-foreground">
+                    Current: challan attached
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setRemoveChallanFlag(true)}
+                  >
+                    Remove challan
+                  </Button>
+                </div>
+              )}
+            </Field>
+          )}
 
           {errors.form ? (
             <p

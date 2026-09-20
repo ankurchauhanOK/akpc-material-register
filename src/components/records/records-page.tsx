@@ -53,6 +53,9 @@ function canEditRecord({
   transaction: TransactionWithNames;
 }): boolean {
   if (role === "admin") return true;
+  // v2 document headers are admin-editable only (RLS); operators cannot
+  // update receiving_documents, so never offer Edit on them.
+  if (transaction.source === "documents") return false;
   if (role !== "operator" || !userId) return false;
   if (transaction.created_by !== userId) return false;
   const windowMs = 24 * 60 * 60 * 1000;

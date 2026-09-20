@@ -31,7 +31,7 @@ export function ChallanPreview({
   partCode,
 }: {
   doc: PreviewDoc;
-  component: Material;
+  component: Material | null;
   partCode: string | null;
 }) {
   const [generating, setGenerating] = useState(false);
@@ -56,8 +56,8 @@ export function ChallanPreview({
           party_contact: doc.party_contact,
           total_amount: doc.total_amount,
         } as Tables<"transactions"> & { party_name: string | null },
-        component.name,
-        UNIT_LABELS[component.unit as UnitType],
+        component?.name ?? "Goods",
+        component ? UNIT_LABELS[component.unit as UnitType] : "",
         doc.items ?? [],
         doc,
         partCode
@@ -95,12 +95,20 @@ export function ChallanPreview({
               <DownloadIcon className="size-4" />
               {generating ? "Generating…" : "Download PDF"}
             </Button>
-            <Link href={`/components/${component.id}/documents/${doc.document_number}`}>
+            <Link
+              href={
+                component
+                  ? `/components/${component.id}/documents/${doc.document_number}`
+                  : `/documents/${doc.document_number}`
+              }
+            >
               <Button variant="outline" size="sm">
                 <FileTextIcon className="size-4" /> Back to Document
               </Button>
             </Link>
-            <Link href={`/components/${component.id}/send`}>
+            <Link
+              href={component ? `/components/${component.id}/send` : "/give"}
+            >
               <Button variant="ghost" size="sm">
                 <RotateCcwIcon className="size-4" /> Record Another
               </Button>

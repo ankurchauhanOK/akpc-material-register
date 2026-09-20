@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { DocumentDetail } from "@/components/components/document-detail";
 import { ChallanPreview } from "@/components/challan/challan-preview";
+import { normalizeSlug } from "@/lib/documents/normalize-slug";
 import type { Tables } from "@/lib/supabase/database.types";
 
 // The document number contains slashes for Send (e.g. AK/2026-27/001) but
@@ -9,29 +10,6 @@ import type { Tables } from "@/lib/supabase/database.types";
 // the number by joining the slug segments with "/". A trailing "challan"
 // segment switches to the A4 challan preview; otherwise the detail view is
 // rendered. The catch-all must stay the last segment (Next.js 16 rule).
-//
-// URLs are encode-agnostic: Next.js does not split/dedupe an encoded slash
-// (%2F) in a dynamic segment, so a client that percent-encodes the number
-// arrives as ONE slug segment. We decode the joined value so both the raw
-// (AK/2026-27/001/challan) and encoded (%2F) forms resolve to the same row
-// instead of 404ing.
-
-function normalizeSlug(
-  slug: string[]
-): { transactionNumber: string; isChallan: boolean } {
-  const joined = slug.join("/");
-  let decoded = joined;
-  try {
-    decoded = decodeURIComponent(joined);
-  } catch {
-    // Malformed percent sequences: keep the raw value rather than crashing.
-  }
-  const isChallan = decoded.endsWith("/challan");
-  const transactionNumber = isChallan
-    ? decoded.slice(0, -"/challan".length)
-    : decoded;
-  return { transactionNumber, isChallan };
-}
 
 export async function generateMetadata({
   params,

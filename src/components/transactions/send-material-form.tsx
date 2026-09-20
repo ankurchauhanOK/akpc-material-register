@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
-import { useActiveParties } from "@/hooks/useMasters";
+import { useActiveParties, useActiveComponents } from "@/hooks/useMasters";
 import { createReceivingDocument } from "@/lib/transactions/createReceivingDocument";
 import { formatDate } from "@/lib/format";
 import type { Enums, Tables } from "@/lib/supabase/database.types";
@@ -21,9 +21,18 @@ import { UNIT_TYPES, UNIT_LABELS } from "@/lib/supabase/types";
 
 type Component = Tables<"materials">;
 type Party = Tables<"companies">;
+type RecordCategory = Enums<"record_category">;
 type UnitType = Enums<"unit_type">;
 type LineType = Enums<"document_line_type">;
 type CompanySettings = Tables<"company_settings">;
+
+const RECORD_CATEGORY_OPTIONS: {
+  value: RecordCategory;
+  label: string;
+}[] = [
+  { value: "manufacturing", label: "Manufacturing Material" },
+  { value: "other", label: "Tools / Other" },
+];
 
 const toPicker = (p: { id: string; name: string }): PickerItem => ({
   id: p.id,
@@ -37,7 +46,11 @@ function todayISO() {
   return local.toISOString().slice(0, 10);
 }
 
-function newLine(lineNo: number, componentName: string): {
+function newLine(
+  lineNo: number,
+  componentName: string,
+  lineType: LineType = "component"
+): {
   id: string;
   lineNo: number;
   lineType: LineType;
@@ -51,9 +64,9 @@ function newLine(lineNo: number, componentName: string): {
   return {
     id: crypto.randomUUID(),
     lineNo,
-    lineType: "component",
+    lineType,
     componentId: null,
-    itemName: componentName,
+    itemName: lineType === "component" ? componentName : "",
     quantity: "",
     unit: "pieces",
     hsnCode: "",
@@ -65,24 +78,41 @@ type Line = ReturnType<typeof newLine>;
 
 const num = (s: string) => Number(s.replace(/,/g, "")) || 0;
 
-export function SendMaterialForm({ component }: { component: Component }) {
+export function SendMaterialForm({
+  component,
+}: {
+  component?: Component | null;
+}) {
   const router = useRouter();
   const { user, canCreate } = useAuth();
   const queryClient = useQueryClient();
   const { items: parties } = useActiveParties();
+  const { items: activeComponents } = useActiveComponents();
 
+  const [recordCategory, setRecordCategory] =
+    useState<RecordCategory>("manufacturing");
+  const [componentId, setComponentId] = useState<string | null>(
+    component?.id ?? null
+  );
   const [partyId, setPartyId] = useState<string | null>(null);
   const [date, setDate] = useState(todayISO());
   const [customerRefNo, setCustomerRefNo] = useState("");
   const [customerRefDate, setCustomerRefDate] = useState("");
   const [notes, setNotes] = useState("");
-  const [lines, setLines] = useState<Line[]>([newLine(1, component.name)]);
+  const [lines, setLines] = useState<Line[]>([
+    newLine(1, component?.name ?? "", "component"),
+  ]);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const submittingRef = useRef(false);
 
   const selectedParty = parties.find((p) => p.id === partyId);
+
+  const selectedComponent =
+    activeComponents.find((c) => c.id === componentId) ??
+    (component && component.id === componentId ? component : null) ??
+    null;
 
   // Our own company details (FROM section) — snapshot onto the document.
   const { data: ourCompany } = useQuery({
@@ -119,7 +149,14 @@ export function SendMaterialForm({ component }: { component: Component }) {
   }
 
   function addLine() {
-    setLines([...lines, newLine(lines.length + 1, component.name)]);
+    setLines([
+      ...lines,
+      newLine(
+        lines.length + 1,
+        selectedComponent?.name ?? "",
+        recordCategory === "other" ? "other" : "component"
+      ),
+    ]);
   }
 
   function removeLine(id: string) {
@@ -129,6 +166,8 @@ export function SendMaterialForm({ component }: { component: Component }) {
   }
 
   function handleLineType(lineId: string, value: LineType) {
+    // Tools / Other documents never reference a component master.
+    if (recordCategory === "other" && value === "component") return;
     setLines((prev) =>
       prev.map((l) =>
         l.id === lineId
@@ -137,12 +176,14 @@ export function SendMaterialForm({ component }: { component: Component }) {
               lineType: value,
               itemName:
                 value === "component"
-                  ? component.name
-                  : l.itemName === component.name
+                  ? selectedComponent?.name ?? l.itemName
+                  : l.itemName === selectedComponent?.name
                     ? ""
                     : l.itemName,
               unit:
-                value === "component" ? component.unit : l.unit,
+                value === "component"
+                  ? selectedComponent?.unit ?? l.unit
+                  : l.unit,
             }
           : l
       )
@@ -154,6 +195,8 @@ export function SendMaterialForm({ component }: { component: Component }) {
     const next: Record<string, string> = {};
     if (!partyId) next.party = "Select or add a customer / destination.";
     if (!date) next.date = "Enter a dispatch date.";
+    if (recordCategory === "manufacturing" && !selectedComponent)
+      next.component = "Select a component master for manufacturing material.";
     const emptyLines = lines.filter(
       (l) =>
         !l.itemName.trim() ||
@@ -197,6 +240,7 @@ export function SendMaterialForm({ component }: { component: Component }) {
         type: "given",
         kind: "other",
         source: "customer",
+        recordCategory,
         companyId: selectedParty.id,
         transactionDate: date,
         customerRefNo: customerRefNo.trim() || null,
@@ -224,9 +268,14 @@ export function SendMaterialForm({ component }: { component: Component }) {
         partyState: selectedParty.state ?? null,
         items: lines.map((l) => ({
           lineNo: l.lineNo,
-          lineType: l.lineType,
+          lineType:
+            recordCategory === "other" ? "other" : l.lineType,
           componentId:
-            l.lineType === "component" ? component.id : null,
+            recordCategory === "other"
+              ? null
+              : l.lineType === "component"
+                ? componentId
+                : null,
           itemName: l.itemName.trim(),
           quantity: num(l.quantity),
           unit: l.unit,
@@ -241,16 +290,21 @@ export function SendMaterialForm({ component }: { component: Component }) {
       });
 
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      queryClient.invalidateQueries({
-        queryKey: ["component_parties", component.id],
-      });
+      if (recordCategory === "manufacturing" && componentId) {
+        queryClient.invalidateQueries({
+          queryKey: ["component_parties", componentId],
+        });
+      }
 
       // Full-page redirect (not router.push): document numbers contain slashes
       // and a client-side nav can 404 from a stale route manifest; a hard load
-      // always resolves through the server + catch-all route.
-      window.location.replace(
-        `/components/${component.id}/documents/${created.document_number}/challan`
-      );
+      // always resolves through the server + catch-all route. Tools / Other
+      // documents have no component scope and use the top-level catch-all.
+      const target =
+        recordCategory === "other"
+          ? `/documents/${created.document_number}/challan`
+          : `/components/${componentId}/documents/${created.document_number}/challan`;
+      window.location.replace(target);
     } catch (e) {
       // Supabase throws a PostgrestError (plain object, not an Error), so
       // surface its `.message` directly instead of a generic fallback.
@@ -284,10 +338,12 @@ export function SendMaterialForm({ component }: { component: Component }) {
           </p>
           <div className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-1.5">
             <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-              Component
+              {recordCategory === "manufacturing" ? "Component" : "Category"}
             </span>
             <span className="text-sm font-medium text-foreground">
-              {component.name}
+              {recordCategory === "manufacturing"
+                ? selectedComponent?.name ?? "Select a component…"
+                : "Tools / Other"}
             </span>
           </div>
         </div>
@@ -299,12 +355,70 @@ export function SendMaterialForm({ component }: { component: Component }) {
         </p>
       )}
 
+      {/* Record category */}
+      <div className="mt-4 rounded-xl border border-border bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+          <div className="flex-1">
+            <Label className="text-xs font-semibold uppercase tracking-wider">
+              What are you recording?
+            </Label>
+            <SegmentedControl
+              options={RECORD_CATEGORY_OPTIONS}
+              value={recordCategory}
+              onChange={setRecordCategory}
+            />
+          </div>
+        </div>
+      </div>
+
       {/* Document details */}
       <section className="rounded-xl border border-border bg-white">
         <h2 className="border-b px-5 py-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
           Document Details
         </h2>
         <div className="grid gap-4 px-5 py-5 md:grid-cols-12">
+          {recordCategory === "manufacturing" && (
+            <Field
+              label="Component Master"
+              error={errors.component}
+              className="md:col-span-4"
+            >
+              <EntityCombobox
+                items={activeComponents.map(toPicker)}
+                selectedId={componentId}
+                placeholder="Search Component Master..."
+                searchPlaceholder="Search components..."
+                emptyText="No components found."
+                createLabel="Add component"
+                canCreate={false}
+                onSelect={(i) => {
+                  setComponentId(i.id);
+                  // A component line's description IS the master's name
+                  // (shown as a read-only chip) — stamp it into the lines so
+                  // validation/save see a non-empty item_name.
+                  const master =
+                    activeComponents.find((c) => c.id === i.id) ?? null;
+                  if (master) {
+                    setLines((prev) =>
+                      prev.map((l) =>
+                        l.lineType === "component"
+                          ? {
+                              ...l,
+                              itemName: master.name,
+                              unit: master.unit,
+                            }
+                          : l
+                      )
+                    );
+                  }
+                }}
+                onCreate={async () => {
+                  throw new Error("Manage components in Settings.");
+                }}
+              />
+            </Field>
+          )}
+
           <Field
             label="Customer / Destination"
             error={errors.party}
@@ -393,7 +507,8 @@ export function SendMaterialForm({ component }: { component: Component }) {
             <LineCard
               key={line.id}
               line={line}
-              component={component}
+              component={selectedComponent}
+              canChooseLineType={recordCategory === "manufacturing"}
               canRemove={lines.length > 1}
               onUpdate={(fn) => updateLine(line.id, fn)}
               onRemove={() => removeLine(line.id)}
@@ -475,18 +590,22 @@ export function SendMaterialForm({ component }: { component: Component }) {
 function LineCard({
   line,
   component,
+  canChooseLineType,
   canRemove,
   onUpdate,
   onRemove,
   onLineType,
 }: {
   line: Line;
-  component: Component;
+  component: Component | null;
+  canChooseLineType: boolean;
   canRemove: boolean;
   onUpdate: (fn: (l: Line) => Line) => void;
   onRemove: () => void;
   onLineType: (t: LineType) => void;
 }) {
+  // Tools / Other documents are always free-text lines.
+  const lineType = canChooseLineType ? line.lineType : "other";
   return (
     <article className="rounded-xl border border-border bg-white p-4">
       <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -494,41 +613,54 @@ function LineCard({
           Item {line.lineNo}
         </span>
 
-        <div className="flex items-center gap-2">
-          {/* Manufactured Material | Other */}
-          <div className="flex rounded-lg border border-border bg-zinc-100 p-0.5">
-            {(["component", "other"] as LineType[]).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => onLineType(t)}
-                className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all ${
-                  line.lineType === t
-                    ? "bg-white text-foreground shadow-sm border border-border/40"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {t === "component" ? "Manufactured Material" : "Other"}
-              </button>
-            ))}
-          </div>
+        {canChooseLineType && (
+          <div className="flex items-center gap-2">
+            {/* Manufactured Material | Other */}
+            <div className="flex rounded-lg border border-border bg-zinc-100 p-0.5">
+              {(["component", "other"] as LineType[]).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => onLineType(t)}
+                  className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all ${
+                    lineType === t
+                      ? "bg-white text-foreground shadow-sm border border-border/40"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {t === "component" ? "Manufactured Material" : "Other"}
+                </button>
+              ))}
+            </div>
 
-          {canRemove && (
-            <button
-              type="button"
-              onClick={onRemove}
-              className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600"
-              title="Remove item"
-            >
-              <Trash2Icon className="size-4" /> Remove
-            </button>
-          )}
-        </div>
+            {canRemove && (
+              <button
+                type="button"
+                onClick={onRemove}
+                className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600"
+                title="Remove item"
+              >
+                <Trash2Icon className="size-4" /> Remove
+              </button>
+            )}
+          </div>
+        )}
+
+        {!canChooseLineType && canRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600"
+            title="Remove item"
+          >
+            <Trash2Icon className="size-4" /> Remove
+          </button>
+        )}
       </header>
 
       <div className="grid gap-3">
         {/* Description of Goods */}
-        {line.lineType === "component" ? (
+        {lineType === "component" && component ? (
           <div className="grid gap-1.5">
             <Label className="text-xs font-semibold uppercase tracking-wider">
               Description of Goods
@@ -633,6 +765,35 @@ function LineCard({
         </div>
       </div>
     </article>
+  );
+}
+
+function SegmentedControl<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: T; label: string }[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
+  return (
+    <div className="flex rounded-lg border border-border bg-zinc-100 p-1 shadow-sm">
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          className={`flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${
+            value === opt.value
+              ? "bg-white text-foreground shadow-sm border border-border/40"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
   );
 }
 

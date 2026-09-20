@@ -2,6 +2,8 @@ import type { Database } from "@/lib/supabase/database.types";
 import { createClient } from "@/lib/supabase/client";
 
 type Row = Database["public"]["Tables"]["transactions"]["Row"];
+type ReceivingDocRow =
+  Database["public"]["Tables"]["receiving_documents"]["Row"];
 
 export type UpdateTransactionInput = {
   materialId: string;
@@ -21,20 +23,55 @@ export type UpdateTransactionInput = {
     contact?: string | null;
     pincode?: string | null;
   };
+  partyGstin?: string | null;
+  partyState?: string | null;
 };
 
+export type UpdateTransactionTarget =
+  | { source: "transactions"; id: string }
+  | { source: "documents"; documentId: string };
+
 /**
- * Updates an EXISTING transaction row — it never inserts a new one.
+ * Updates an EXISTING transaction/document — it never inserts a new one.
  * The transaction `type` is intentionally NOT part of the input: it is
  * immutable once created (enforced in the DB and here in the UI).
- * Preserves entered source values (unit_price / total_amount) and
- * refreshes the party snapshot on edit.
+ *
+ * Legacy rows (`transactions`) are fully editable (material, company,
+ * pieces, amount, date, challan). v2 documents (`receiving_documents`)
+ * are more locked down by design (RLS): only the HEADER is editable and
+ * only by admins — company/destination, date, and the party snapshot.
+ * Line items are immutable on purpose (no update policy is granted), so
+ * a Tools/Other document NEVER requires picking a component master when
+ * its destination/date are corrected.
  */
 export async function updateTransaction(
-  id: string,
+  target: UpdateTransactionTarget,
   input: UpdateTransactionInput
-): Promise<Row> {
+): Promise<Row | ReceivingDocRow> {
   const supabase = createClient();
+
+  if (target.source === "documents") {
+    const { data, error } = await supabase
+      .from("receiving_documents")
+      .update({
+        company_id: input.companyId,
+        transaction_date: input.transactionDate,
+        party_name: input.partySnapshot?.name ?? null,
+        party_company: input.partySnapshot?.company ?? null,
+        party_location: input.partySnapshot?.location ?? null,
+        party_post: input.partySnapshot?.post ?? null,
+        party_contact: input.partySnapshot?.contact ?? null,
+        party_pincode: input.partySnapshot?.pincode ?? null,
+        party_gstin: input.partyGstin ?? null,
+        party_state: input.partyState ?? null,
+      })
+      .eq("id", target.documentId)
+      .select("*")
+      .single();
+    if (error) throw error;
+    if (!data) throw new Error("Document not found or update not permitted.");
+    return data as ReceivingDocRow;
+  }
 
   const { data, error } = await supabase
     .from("transactions")
@@ -55,7 +92,7 @@ export async function updateTransaction(
       party_contact: input.partySnapshot?.contact ?? null,
       party_pincode: input.partySnapshot?.pincode ?? null,
     })
-    .eq("id", id)
+    .eq("id", target.id)
     .select("*")
     .single();
 
