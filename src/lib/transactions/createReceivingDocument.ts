@@ -35,6 +35,7 @@ export type CreateReceivingDocumentInput = {
   externalDocumentPath?: string | null;
   notes?: string | null;
   createdBy: string;
+  recordCategory?: Enums<"record_category"> | null;
   partySnapshot?: {
     name?: string | null;
     company?: string | null;
@@ -110,6 +111,7 @@ export async function createReceivingDocument(
     our_pincode: input.ourCompany?.pincode ?? null,
     our_gstin: input.ourCompany?.gstin ?? null,
     our_pan: input.ourCompany?.pan ?? null,
+    record_category: input.recordCategory ?? null,
     customer_ref_no: input.customerRefNo ?? null,
     customer_ref_date: input.customerRefDate ?? null,
     subtotal: input.items.reduce((s, i) => s + (i.subtotal || 0), 0),

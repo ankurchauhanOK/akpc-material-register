@@ -48,6 +48,14 @@ type DocumentLineType = Enums<"document_line_type">;
 type PaymentStatus = Enums<"payment_status">;
 type UnitType = Enums<"unit_type">;
 
+const RECORD_CATEGORY_OPTIONS: {
+  value: "manufacturing" | "other";
+  label: string;
+}[] = [
+  { value: "manufacturing", label: "Manufacturing Material" },
+  { value: "other", label: "Tools / Other" },
+];
+
 const toPicker = (p: { id: string; name: string }): PickerItem => ({
   id: p.id,
   name: p.name,
@@ -116,6 +124,9 @@ export function MultiItemReceiveForm({ component }: { component: Component }) {
   const [date, setDate] = useState(todayISO());
   const [vehicle, setVehicle] = useState("");
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("pending");
+  const [recordCategory, setRecordCategory] = useState<
+    "manufacturing" | "other"
+  >("manufacturing");
   const [lines, setLines] = useState<Line[]>([newLine(1)]);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -224,6 +235,7 @@ export function MultiItemReceiveForm({ component }: { component: Component }) {
         challanNumber: source === "supplier" ? challanNumber.trim() : null,
         vehicleDetails: source === "supplier" ? vehicle.trim() : null,
         createdBy: user.id,
+        recordCategory,
         partySnapshot: {
           name: selectedParty.name,
           company: selectedParty.name,
@@ -237,7 +249,8 @@ export function MultiItemReceiveForm({ component }: { component: Component }) {
           return {
             lineNo: l.lineNo,
             lineType: l.lineType,
-            componentId: l.componentId,
+            componentId:
+              recordCategory === "manufacturing" ? component.id : null,
             itemName: l.itemName.trim(),
             quantity: num(l.quantity),
             unit: l.unit,
@@ -264,6 +277,7 @@ export function MultiItemReceiveForm({ component }: { component: Component }) {
       setPaymentStatus("pending");
       setSource("supplier");
       setKind("raw-material");
+      setRecordCategory("manufacturing");
     } catch (e) {
       setErrors({
         form:
@@ -285,7 +299,8 @@ export function MultiItemReceiveForm({ component }: { component: Component }) {
           <CheckIcon className="size-6" />
         </div>
         <p className="text-sm font-medium text-zinc-600">
-          Received · {component.name}
+          Received ·{" "}
+          {recordCategory === "manufacturing" ? component.name : "Tools / Other"}
         </p>
         <h2 className="mt-1 text-3xl font-semibold tracking-tight">
           {saved.document_number}
@@ -331,14 +346,16 @@ export function MultiItemReceiveForm({ component }: { component: Component }) {
           <p className="mt-0.5 text-sm text-muted-foreground">
             Record incoming stock to the register.
           </p>
-          <div className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-1.5">
-            <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-              Component
-            </span>
-            <span className="text-sm font-medium text-foreground">
-              {component.name}
-            </span>
-          </div>
+          {recordCategory === "manufacturing" && (
+            <div className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-1.5">
+              <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                Component
+              </span>
+              <span className="text-sm font-medium text-foreground">
+                {component.name}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -362,6 +379,16 @@ export function MultiItemReceiveForm({ component }: { component: Component }) {
               }))}
               value={kind}
               onChange={setKind}
+            />
+          </div>
+          <div className="flex-1">
+            <Label className="text-xs font-semibold uppercase tracking-wider">
+              Record Category
+            </Label>
+            <SegmentedControl
+              options={RECORD_CATEGORY_OPTIONS}
+              value={recordCategory}
+              onChange={setRecordCategory}
             />
           </div>
           <div className="flex-1">

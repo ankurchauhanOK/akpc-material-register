@@ -306,6 +306,7 @@ export type Database = {
           party_post: string | null
           party_state: string | null
           payment_status: Database["public"]["Enums"]["payment_status"] | null
+          record_category: Database["public"]["Enums"]["record_category"] | null
           source: Database["public"]["Enums"]["document_source"]
           status: Database["public"]["Enums"]["receiving_document_status"]
           subtotal: number
@@ -345,6 +346,9 @@ export type Database = {
           party_post?: string | null
           party_state?: string | null
           payment_status?: Database["public"]["Enums"]["payment_status"] | null
+          record_category?:
+            | Database["public"]["Enums"]["record_category"]
+            | null
           source: Database["public"]["Enums"]["document_source"]
           status?: Database["public"]["Enums"]["receiving_document_status"]
           subtotal?: number
@@ -384,6 +388,9 @@ export type Database = {
           party_post?: string | null
           party_state?: string | null
           payment_status?: Database["public"]["Enums"]["payment_status"] | null
+          record_category?:
+            | Database["public"]["Enums"]["record_category"]
+            | null
           source?: Database["public"]["Enums"]["document_source"]
           status?: Database["public"]["Enums"]["receiving_document_status"]
           subtotal?: number
@@ -428,6 +435,7 @@ export type Database = {
           party_pincode: string | null
           party_post: string | null
           pieces: number
+          record_category: Database["public"]["Enums"]["record_category"] | null
           total_amount: number
           transaction_date: string
           transaction_number: string
@@ -452,6 +460,9 @@ export type Database = {
           party_pincode?: string | null
           party_post?: string | null
           pieces: number
+          record_category?:
+            | Database["public"]["Enums"]["record_category"]
+            | null
           total_amount?: number
           transaction_date?: string
           transaction_number: string
@@ -476,6 +487,9 @@ export type Database = {
           party_pincode?: string | null
           party_post?: string | null
           pieces?: number
+          record_category?:
+            | Database["public"]["Enums"]["record_category"]
+            | null
           total_amount?: number
           transaction_date?: string
           transaction_number?: string
@@ -532,6 +546,7 @@ export type Database = {
       party_role: "customer" | "supplier" | "both"
       payment_status: "pending" | "paid"
       receiving_document_status: "completed" | "cancelled"
+      record_category: "manufacturing" | "other"
       transaction_type: "received" | "given"
       unit_type: "pieces" | "kg" | "meter" | "litre" | "set"
     }
@@ -669,6 +684,7 @@ export const Constants = {
       party_role: ["customer", "supplier", "both"],
       payment_status: ["pending", "paid"],
       receiving_document_status: ["completed", "cancelled"],
+      record_category: ["manufacturing", "other"],
       transaction_type: ["received", "given"],
       unit_type: ["pieces", "kg", "meter", "litre", "set"],
     },
