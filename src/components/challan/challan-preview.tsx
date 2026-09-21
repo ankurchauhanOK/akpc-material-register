@@ -2,37 +2,56 @@
 
 import { Fragment, useState } from "react";
 import Link from "next/link";
-import { DownloadIcon, FileTextIcon, PrinterIcon, RotateCcwIcon } from "lucide-react";
+import {
+  ArrowLeftIcon,
+  CheckIcon,
+  DownloadIcon,
+  FileTextIcon,
+  PrinterIcon,
+  RotateCcwIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { renderChallanPdf } from "@/lib/challan/challan-pdf";
-import { buildChallanView } from "@/lib/challan/challan-view";
+import { buildChallanView, type ChallanDoc } from "@/lib/challan/challan-view";
 import { UNIT_LABELS } from "@/lib/supabase/types";
 import type { Tables, Enums } from "@/lib/supabase/database.types";
 
 type Material = Tables<"materials">;
-type DocItem = Tables<"receiving_document_items">;
 type UnitType = Enums<"unit_type">;
 
-type PreviewDoc = Tables<"receiving_documents"> & {
-  items: DocItem[];
-};
-
 /**
- * Client Challan Preview / Document Viewer for a saved Send document.
+ * Client Challan Preview / Document Viewer.
  *
  * Renders an on-screen A4 DELIVERY CHALLAN mimicking the physical AKPC
  * challan (FROM / TO blocks, DC metadata, GST/PAN, item table with
  * HSN/SAC + Remarks). Print prints the on-screen A4 directly. Download
  * PDF regenerates the same document via the on-demand renderer.
+ *
+ * Two modes:
+ *  - saved (default): reads a persisted document; shows Print / Download /
+ *    Back to Document / Record Another.
+ *  - preview: renders UNSAVED client-side form data (document_number shows
+ *    "DRAFT" purely as text); only Back to Edit + Confirm & Save are shown.
+ *    Nothing is written to the database in this mode.
  */
 export function ChallanPreview({
   doc,
   component,
   partCode,
+  preview = false,
+  onBack,
+  onConfirm,
+  saving = false,
+  confirmError,
 }: {
-  doc: PreviewDoc;
+  doc: ChallanDoc;
   component: Material | null;
   partCode: string | null;
+  preview?: boolean;
+  onBack?: () => void;
+  onConfirm?: () => void;
+  saving?: boolean;
+  confirmError?: string | null;
 }) {
   const [generating, setGenerating] = useState(false);
   const view = buildChallanView(doc, partCode);
@@ -58,14 +77,14 @@ export function ChallanPreview({
         } as Tables<"transactions"> & { party_name: string | null },
         component?.name ?? "Goods",
         component ? UNIT_LABELS[component.unit as UnitType] : "",
-        doc.items ?? [],
-        doc,
+        (doc.items ?? []) as Tables<"receiving_document_items">[],
+        doc as Tables<"receiving_documents">,
         partCode
       );
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${doc.document_number.replace(/\//g, "-")}.pdf`;
+      a.download = `${(doc.document_number ?? "challan").replace(/\//g, "-")}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } finally {
@@ -76,45 +95,72 @@ export function ChallanPreview({
   return (
     <div className="flex flex-col items-center">
       {/* Action bar (no print) */}
-      <div className="no-print sticky top-0 z-50 w-full border-b border-border bg-white/90 px-4 py-3 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-[210mm] flex-wrap items-center justify-between gap-3">
+      <div className="no-print sticky top-0 z-50 w-full border-b border-border bg-white/90 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-[210mm] flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div>
             <h1 className="text-lg font-semibold tracking-tight">Challan Preview</h1>
             <p className="text-xs text-muted-foreground">Delivery Challan · {doc.document_number}</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => window.print()}>
-              <PrinterIcon className="size-4" /> Print
-            </Button>
-            <Button
-              size="sm"
-              onClick={downloadPdf}
-              disabled={generating}
-              className="bg-emerald-600 hover:bg-emerald-700"
-            >
-              <DownloadIcon className="size-4" />
-              {generating ? "Generating…" : "Download PDF"}
-            </Button>
-            <Link
-              href={
-                component
-                  ? `/components/${component.id}/documents/${doc.document_number}`
-                  : `/documents/${doc.document_number}`
-              }
-            >
-              <Button variant="outline" size="sm">
-                <FileTextIcon className="size-4" /> Back to Document
+          {preview ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {onBack && (
+                <Button variant="outline" size="sm" onClick={onBack} disabled={saving}>
+                  <ArrowLeftIcon className="size-4" /> Back to Edit
+                </Button>
+              )}
+              {onConfirm && (
+                <Button
+                  size="sm"
+                  onClick={onConfirm}
+                  disabled={saving}
+                  className="bg-emerald-600 hover:bg-emerald-700"
+                >
+                  <CheckIcon className="size-4" />
+                  {saving ? "Saving…" : "Confirm & Save"}
+                </Button>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => window.print()}>
+                <PrinterIcon className="size-4" /> Print
               </Button>
-            </Link>
-            <Link
-              href={component ? `/components/${component.id}/send` : "/give"}
-            >
-              <Button variant="ghost" size="sm">
-                <RotateCcwIcon className="size-4" /> Record Another
+              <Button
+                size="sm"
+                onClick={downloadPdf}
+                disabled={generating}
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                <DownloadIcon className="size-4" />
+                {generating ? "Generating…" : "Download PDF"}
               </Button>
-            </Link>
-          </div>
+              <Link
+                href={
+                  component
+                    ? `/components/${component.id}/documents/${doc.document_number}`
+                    : `/documents/${doc.document_number}`
+                }
+              >
+                <Button variant="outline" size="sm">
+                  <FileTextIcon className="size-4" /> Back to Document
+                </Button>
+              </Link>
+              <Link
+                href={component ? `/components/${component.id}/send` : "/give"}
+              >
+                <Button variant="ghost" size="sm">
+                  <RotateCcwIcon className="size-4" /> Record Another
+                </Button>
+              </Link>
+            </div>
+          )}
         </div>
+        {preview && (
+          <div className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-center text-xs font-medium text-amber-900">
+            Preview only — nothing is saved yet. The DC number is generated when
+            you Confirm &amp; Save.
+          </div>
+        )}
       </div>
 
       {/* On-screen A4 document */}
@@ -237,6 +283,15 @@ export function ChallanPreview({
           </div>
         </div>
       </div>
+
+      {confirmError ? (
+        <p
+          role="alert"
+          className="no-print mt-6 w-full max-w-[210mm] rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700"
+        >
+          {confirmError}
+        </p>
+      ) : null}
     </div>
   );
 }

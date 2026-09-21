@@ -3,7 +3,8 @@
 import { useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowUpRightIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { ArrowUpRightIcon, EyeIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import {
   EntityCombobox,
@@ -15,6 +16,9 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";
 import { useActiveParties, useActiveComponents } from "@/hooks/useMasters";
 import { createReceivingDocument } from "@/lib/transactions/createReceivingDocument";
+import type { CreateReceivingDocumentInput } from "@/lib/transactions/createReceivingDocument";
+import { ChallanPreview } from "@/components/challan/challan-preview";
+import type { ChallanDoc } from "@/lib/challan/challan-view";
 import { formatDate } from "@/lib/format";
 import type { Enums, Tables } from "@/lib/supabase/database.types";
 import { UNIT_TYPES, UNIT_LABELS } from "@/lib/supabase/types";
@@ -106,6 +110,7 @@ export function SendMaterialForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const submittingRef = useRef(false);
+  const [step, setStep] = useState<"form" | "preview">("form");
 
   const selectedParty = parties.find((p) => p.id === partyId);
 
@@ -128,6 +133,114 @@ export function SendMaterialForm({
       return (data ?? null) as CompanySettings | null;
     },
   });
+
+  /**
+   * Pure mapping of the current form state -> the complete document shape.
+   * Same object feeds BOTH the unsaved Challan Preview renderer and the
+   * single Confirm & Save write, so the two can never drift apart. No DB
+   * reads/writes happen here; the preview consults nothing beyond this.
+   */
+  function buildSendDraft(): {
+    input: CreateReceivingDocumentInput;
+    draft: ChallanDoc;
+  } | null {
+    if (!selectedParty) return null;
+
+    // Build FROM snapshot from saved company profile (fallback to defaults).
+    const fromAddress =
+      [ourCompany?.address_line1, ourCompany?.address_line2]
+        .filter(Boolean)
+        .join(", ") || null;
+
+    const input: CreateReceivingDocumentInput = {
+      type: "given",
+      kind: "other",
+      source: "customer",
+      recordCategory,
+      companyId: selectedParty.id,
+      transactionDate: date,
+      customerRefNo: customerRefNo.trim() || null,
+      customerRefDate: customerRefDate || null,
+      notes: notes.trim() || null,
+      createdBy: user?.id ?? "",
+      ourCompany: {
+        companyName: ourCompany?.company_name ?? null,
+        address: fromAddress,
+        city: ourCompany?.city ?? null,
+        state: ourCompany?.state ?? null,
+        pincode: ourCompany?.pincode ?? null,
+        gstin: ourCompany?.gstin ?? null,
+        pan: ourCompany?.pan ?? null,
+      },
+      partySnapshot: {
+        name: selectedParty.name,
+        company: selectedParty.name,
+        location: selectedParty.location,
+        post: selectedParty.post,
+        contact: selectedParty.contact,
+        pincode: selectedParty.pincode,
+      },
+      partyGstin: selectedParty.gstin ?? null,
+      partyState: selectedParty.state ?? null,
+      items: lines.map((l) => ({
+        lineNo: l.lineNo,
+        lineType:
+          recordCategory === "other" ? "other" : l.lineType,
+        componentId:
+          recordCategory === "other"
+            ? null
+            : l.lineType === "component"
+              ? componentId
+              : null,
+        itemName: l.itemName.trim(),
+        quantity: num(l.quantity),
+        unit: l.unit,
+        unitPrice: null,
+        gstPercent: 0,
+        hsnCode: l.hsnCode.trim() || null,
+        itemRemarks: l.itemRemarks.trim() || null,
+        subtotal: 0,
+        gstAmount: 0,
+        lineTotal: 0,
+      })),
+    };
+
+    // "DRAFT" is ONLY placeholder text — no document exists, no DC number is
+    // reserved. The real AK/YYYY-YY/NNN is assigned by the DB on Confirm & Save.
+    const draft: ChallanDoc = {
+      type: "given",
+      document_number: "DRAFT",
+      transaction_date: input.transactionDate,
+      total_amount: 0,
+      our_company_name: input.ourCompany?.companyName ?? null,
+      our_address: input.ourCompany?.address ?? null,
+      our_city: input.ourCompany?.city ?? null,
+      our_state: input.ourCompany?.state ?? null,
+      our_pincode: input.ourCompany?.pincode ?? null,
+      our_gstin: input.ourCompany?.gstin ?? null,
+      our_pan: input.ourCompany?.pan ?? null,
+      customer_ref_no: input.customerRefNo ?? null,
+      customer_ref_date: input.customerRefDate ?? null,
+      party_name: input.partySnapshot?.name ?? null,
+      party_company: input.partySnapshot?.company ?? null,
+      party_location: input.partySnapshot?.location ?? null,
+      party_post: input.partySnapshot?.post ?? null,
+      party_pincode: input.partySnapshot?.pincode ?? null,
+      party_state: input.partyState ?? null,
+      party_contact: input.partySnapshot?.contact ?? null,
+      party_gstin: input.partyGstin ?? null,
+      items: input.items.map((i) => ({
+        line_type: i.lineType,
+        item_name: i.itemName,
+        quantity: i.quantity,
+        unit: i.unit,
+        hsn_code: i.hsnCode ?? null,
+        item_remarks: i.itemRemarks ?? null,
+      })),
+    };
+
+    return { input, draft };
+  }
 
   const createParty = useMutation({
     mutationFn: async (name: string): Promise<PickerItem> => {
@@ -209,18 +322,24 @@ export function SendMaterialForm({
     return Object.keys(next).length === 0;
   }
 
-  async function handleSaveAndChallan() {
+  // ----- preview + confirm (no persistence before Confirm & Save) -----
+  function handlePreview() {
+    if (!validate()) return;
+    setStep("preview");
+  }
+
+  async function handleConfirmSave() {
     if (!canCreate) {
       setErrors({ form: "You do not have permission to record this." });
       return;
     }
     if (submittingRef.current) return;
-    if (!validate()) return;
     if (!user) {
       setErrors({ form: "Please sign in again." });
       return;
     }
-    if (!selectedParty) {
+    const built = buildSendDraft();
+    if (!built) {
       setErrors({ form: "Please select a customer / destination." });
       return;
     }
@@ -229,65 +348,8 @@ export function SendMaterialForm({
     setSaving(true);
     setErrors({});
 
-    // Build FROM snapshot from saved company profile (fallback to defaults).
-    const fromAddress =
-      [ourCompany?.address_line1, ourCompany?.address_line2]
-        .filter(Boolean)
-        .join(", ") || null;
-
     try {
-      const created = await createReceivingDocument({
-        type: "given",
-        kind: "other",
-        source: "customer",
-        recordCategory,
-        companyId: selectedParty.id,
-        transactionDate: date,
-        customerRefNo: customerRefNo.trim() || null,
-        customerRefDate: customerRefDate || null,
-        notes: notes.trim() || null,
-        createdBy: user.id,
-        ourCompany: {
-          companyName: ourCompany?.company_name ?? null,
-          address: fromAddress,
-          city: ourCompany?.city ?? null,
-          state: ourCompany?.state ?? null,
-          pincode: ourCompany?.pincode ?? null,
-          gstin: ourCompany?.gstin ?? null,
-          pan: ourCompany?.pan ?? null,
-        },
-        partySnapshot: {
-          name: selectedParty.name,
-          company: selectedParty.name,
-          location: selectedParty.location,
-          post: selectedParty.post,
-          contact: selectedParty.contact,
-          pincode: selectedParty.pincode,
-        },
-        partyGstin: selectedParty.gstin ?? null,
-        partyState: selectedParty.state ?? null,
-        items: lines.map((l) => ({
-          lineNo: l.lineNo,
-          lineType:
-            recordCategory === "other" ? "other" : l.lineType,
-          componentId:
-            recordCategory === "other"
-              ? null
-              : l.lineType === "component"
-                ? componentId
-                : null,
-          itemName: l.itemName.trim(),
-          quantity: num(l.quantity),
-          unit: l.unit,
-          unitPrice: null,
-          gstPercent: 0,
-          hsnCode: l.hsnCode.trim() || null,
-          itemRemarks: l.itemRemarks.trim() || null,
-          subtotal: 0,
-          gstAmount: 0,
-          lineTotal: 0,
-        })),
-      });
+      await createReceivingDocument(built.input);
 
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
       if (recordCategory === "manufacturing" && componentId) {
@@ -296,15 +358,8 @@ export function SendMaterialForm({
         });
       }
 
-      // Full-page redirect (not router.push): document numbers contain slashes
-      // and a client-side nav can 404 from a stale route manifest; a hard load
-      // always resolves through the server + catch-all route. Tools / Other
-      // documents have no component scope and use the top-level catch-all.
-      const target =
-        recordCategory === "other"
-          ? `/documents/${created.document_number}/challan`
-          : `/components/${componentId}/documents/${created.document_number}/challan`;
-      window.location.replace(target);
+      toast.success("Delivery challan saved successfully.");
+      router.replace("/dashboard");
     } catch (e) {
       // Supabase throws a PostgrestError (plain object, not an Error), so
       // surface its `.message` directly instead of a generic fallback.
@@ -319,6 +374,25 @@ export function SendMaterialForm({
       submittingRef.current = false;
       setSaving(false);
     }
+  }
+
+  // ----- preview screen: render unsaved form data, nothing written yet -----
+  const previewDraft = step === "preview" ? buildSendDraft() : null;
+  if (step === "preview" && previewDraft) {
+    return (
+      <div className="min-h-screen bg-zinc-100">
+        <ChallanPreview
+          doc={previewDraft.draft}
+          component={selectedComponent}
+          partCode={selectedComponent?.part_code ?? null}
+          preview
+          onBack={() => setStep("form")}
+          onConfirm={handleConfirmSave}
+          saving={saving}
+          confirmError={errors.form ?? null}
+        />
+      </div>
+    );
   }
 
   // ----- the one-screen form -----
@@ -575,11 +649,11 @@ export function SendMaterialForm({
           </Button>
           <Button
             type="button"
-            onClick={handleSaveAndChallan}
+            onClick={handlePreview}
             disabled={saving}
             className="h-12 px-6 text-base"
           >
-            {saving ? "Saving…" : "Save & Confirm Challan"}
+            <EyeIcon className="size-4" /> Preview Challan
           </Button>
         </div>
       </section>

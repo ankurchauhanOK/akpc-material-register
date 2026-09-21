@@ -90,11 +90,27 @@ export type ChallanView = {
   receiver: string;
 };
 
-type DocLike = {
+export type ChallanLine = {
+  line_type?: string | null;
+  item_name?: string | null;
+  quantity?: number | null;
+  unit?: string | null;
+  hsn_code?: string | null;
+  item_remarks?: string | null;
+};
+
+/**
+ * Structural subset of a challan document that every renderer consumes.
+ * Satisfied by a saved receiving_documents row AND by a pure client-side
+ * preview draft built from unsent form data — nothing here implies a row
+ * exists in the database.
+ */
+export type ChallanDoc = {
   type?: string | null;
   document_number?: string | null;
   transaction_number?: string | null;
   transaction_date?: string | null;
+  total_amount?: number | null;
   our_company_name?: string | null;
   our_address?: string | null;
   our_city?: string | null;
@@ -112,18 +128,11 @@ type DocLike = {
   party_state?: string | null;
   party_contact?: string | null;
   party_gstin?: string | null;
-  items?: {
-    line_type?: string | null;
-    item_name?: string | null;
-    quantity?: number | null;
-    unit?: string | null;
-    hsn_code?: string | null;
-    item_remarks?: string | null;
-  }[];
+  items?: ChallanLine[];
 };
 
 export function buildChallanView(
-  doc: DocLike,
+  doc: ChallanDoc,
   partCode: string | null,
   single?: { name: string; qty: number; unitShort: string } | null
 ): ChallanView {
