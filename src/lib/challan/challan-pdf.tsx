@@ -151,13 +151,26 @@ const styles = StyleSheet.create({
     borderTopWidth: G.border,
     borderTopColor: G.colorTable,
   },
+  // Vertically center short numeric values when a sibling cell wraps and
+  // grows the row (MOQ / Unit / S.No).
+  cellCenter: {
+    justifyContent: "center" as const,
+  },
   // per-column cell styles (borderRight added where needed below)
+  // NOTE: these are CELL styles only — never apply a column `width` to the
+  // inner <Text>. react-pdf width is border-box (includes padding + border),
+  // so a Text repeating the column width overflows its cell's content box
+  // into the neighboring column.
   cSno: { width: G.colSno, fontSize: G.fontBody, color: G.textBody, textAlign: "center" as const },
   cHsn: { width: G.colHsn, fontSize: G.fontBody, color: G.textBody },
   cDesc: { width: G.colDesc, fontSize: G.fontBody },
   cMoq: { width: G.colMoq, fontSize: G.fontBody, color: G.textBody, textAlign: "right" as const },
   cUnit: { width: G.colUnit, fontSize: G.fontBody, color: G.textBody },
   cRem: { width: G.colRem, fontSize: G.fontBody, color: G.textAddress },
+  // text-level styles for numeric/short cells (no width — fill the cell's
+  // content box with the cell's own alignment only)
+  cMoqText: { fontSize: G.fontBody, color: G.textBody, textAlign: "right" as const },
+  cUnitText: { fontSize: G.fontBody, color: G.textBody },
   cDescName: { fontSize: G.fontBody, fontWeight: "bold" as const, color: G.textTitle },
   cDescPart: { fontSize: G.fontSmall, color: G.textMuted, marginTop: 1 },
   emptyCell: {
@@ -250,7 +263,7 @@ function DataRow({ row }: { row: ChallanRow }) {
   );
   return (
     <View style={styles.dataRow}>
-      <View style={[styles.cell, styles.cSno, colRightBorder(true)]}>
+      <View style={[styles.cell, styles.cSno, styles.cellCenter, { overflow: "hidden" as const }, colRightBorder(true)]}>
         <Text>{row.sno}</Text>
       </View>
       <View style={[styles.cell, styles.cHsn, colRightBorder(true)]}>
@@ -259,11 +272,11 @@ function DataRow({ row }: { row: ChallanRow }) {
       <View style={[styles.cell, styles.cDesc, colRightBorder(true)]}>
         {descChild}
       </View>
-      <View style={[styles.cell, styles.cMoq, colRightBorder(true)]}>
-        <Text style={[styles.cMoq]}>{row.qty}</Text>
+      <View style={[styles.cell, styles.cMoq, styles.cellCenter, { overflow: "hidden" as const }, colRightBorder(true)]}>
+        <Text style={styles.cMoqText}>{row.qty}</Text>
       </View>
-      <View style={[styles.cell, styles.cUnit, colRightBorder(true)]}>
-        <Text>{row.unit}</Text>
+      <View style={[styles.cell, styles.cUnit, styles.cellCenter, { overflow: "hidden" as const }, colRightBorder(true)]}>
+        <Text style={styles.cUnitText}>{row.unit}</Text>
       </View>
       <View style={[styles.cell, styles.cRem, colRightBorder(false)]}>
         <Text>{row.remarks}</Text>
