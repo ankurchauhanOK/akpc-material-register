@@ -28,15 +28,17 @@ import type { Role } from "@/lib/supabase/types";
 import {
   useTransactions,
   summarizeMovement,
+  groupRecordsByDocument,
   useActiveMaterials,
   useActiveCompanies,
+  type RecordDocument,
   type TransactionWithNames,
 } from "@/hooks/useTransactions";
 import { TransactionEditDialog } from "@/components/records/transaction-edit-dialog";
 import { TransactionDetailDialog } from "@/components/records/transaction-detail-dialog";
 import { deleteTransactionPermanently } from "@/lib/transactions/updateTransaction";
 import { removeChallan } from "@/lib/supabase/storage";
-import { formatDate, formatINR, formatPieces } from "@/lib/format";
+import { formatDate, formatPieces } from "@/lib/format";
 
 type FilterType = "all" | "received" | "given";
 
@@ -70,36 +72,49 @@ export function RecordsPage() {
   const [materialId, setMaterialId] = useState<string>("");
   const [companyId, setCompanyId] = useState<string>("");
 
-  const [detail, setDetail] = useState<TransactionWithNames | null>(null);
+  const [detail, setDetail] = useState<RecordDocument | null>(null);
   const [edit, setEdit] = useState<TransactionWithNames | null>(null);
   const [deleteTarget, setDeleteTarget] =
-    useState<TransactionWithNames | null>(null);
+    useState<RecordDocument | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const { data: rows = [], isLoading, error } = useTransactions();
   const { items: materials } = useActiveMaterials();
   const { items: companies } = useActiveCompanies();
 
+  // One top-level record per document/challan (never one per item line).
+  const records = useMemo(() => groupRecordsByDocument(rows), [rows]);
+
   const movement = useMemo(() => summarizeMovement(rows), [rows]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return rows.filter((t) => {
-      if (type !== "all" && t.type !== type) return false;
-      if (materialId && t.material_id !== materialId) return false;
-      if (companyId && t.company_id !== companyId) return false;
+    return records.filter((doc) => {
+      if (type !== "all" && doc.type !== type) return false;
+      // A challan matches when ANY of its items belongs to the selected
+      // Component Master; component-less (Tools/Other) docs never match.
+      if (materialId && !doc.items.some((i) => i.materialId === materialId))
+        return false;
+      if (companyId && doc.companyId !== companyId) return false;
       if (q) {
-        const hay = `${t.transaction_number} ${t.material_name} ${t.company_name}`.toLowerCase();
+        const hay = [
+          doc.documentNumber,
+          doc.companyName,
+          doc.recordCategory ?? "",
+          ...doc.items.map((i) => i.materialName),
+        ]
+          .join(" ")
+          .toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
     });
-  }, [rows, search, type, materialId, companyId]);
+  }, [records, search, type, materialId, companyId]);
 
-  function handleDelete(t: TransactionWithNames) {
+  function handleDelete(doc: RecordDocument) {
     if (!isAdmin) return;
     setDetail(null);
-    setDeleteTarget(t);
+    setDeleteTarget(doc);
   }
 
   async function performDelete() {
@@ -107,25 +122,25 @@ export function RecordsPage() {
     setDeleting(true);
     try {
       // Best-effort challan cleanup before row removal
-      if (deleteTarget.challan_path) {
-        removeChallan(deleteTarget.challan_path).catch(() => {});
+      if (deleteTarget.challanPath) {
+        removeChallan(deleteTarget.challanPath).catch(() => {});
       }
-      if (deleteTarget.external_document_path) {
-        removeChallan(deleteTarget.external_document_path).catch(() => {});
+      if (deleteTarget.externalDocumentPath) {
+        removeChallan(deleteTarget.externalDocumentPath).catch(() => {});
       }
       await deleteTransactionPermanently(
         deleteTarget.source === "documents"
           ? {
               source: "documents",
-              documentId: deleteTarget.document_id ?? "",
+              documentId: deleteTarget.documentId ?? "",
             }
-          : { source: "transactions", id: deleteTarget.id }
+          : { source: "transactions", id: deleteTarget.primary.id }
       );
       setDeleteTarget(null);
       queryClient.invalidateQueries({ queryKey: ["transactions"] });
-      toast.success("Transaction deleted permanently.");
+      toast.success("Record deleted permanently.");
     } catch {
-      toast.error("Unable to delete the transaction. Please try again.");
+      toast.error("Unable to delete the record. Please try again.");
     } finally {
       setDeleting(false);
     }
@@ -204,63 +219,95 @@ export function RecordsPage() {
         </div>
       ) : (
         <>
-          {/* Desktop table */}
+          {/* Desktop table — one row per document/challan */}
           <div className="hidden overflow-hidden rounded-xl border bg-white md:block">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Transaction</TableHead>
+                  <TableHead>Challan</TableHead>
                   <TableHead>Type</TableHead>
-                  <TableHead>Material</TableHead>
+                  <TableHead>Category</TableHead>
                   <TableHead>Company</TableHead>
-                  <TableHead>Pieces</TableHead>
-                  <TableHead>Amount</TableHead>
+                  <TableHead>Items</TableHead>
+                  <TableHead>Total Qty</TableHead>
                   <TableHead>Date</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((t) => (
+                {filtered.map((doc) => (
                   <TableRow
-                    key={t.id}
+                    key={doc.key}
                     className="cursor-pointer hover:bg-muted/40"
-                    onClick={() => setDetail(t)}
+                    onClick={() => setDetail(doc)}
                   >
-                    <TableCell className="font-medium">{t.transaction_number}</TableCell>
-                    <TableCell>
-                      <TypeBadge type={t.type} />
+                    <TableCell className="font-medium">
+                      {doc.documentNumber}
                     </TableCell>
-                    <TableCell>{t.material_name}</TableCell>
-                    <TableCell>{t.company_name}</TableCell>
-                    <TableCell>{new Intl.NumberFormat("en-IN").format(t.pieces)}</TableCell>
-                    <TableCell>{formatINR(t.total_amount)}</TableCell>
-                    <TableCell>{formatDate(t.transaction_date)}</TableCell>
+                    <TableCell>
+                      <TypeBadge type={doc.type} />
+                    </TableCell>
+                    <TableCell>{categoryLabel(doc.recordCategory)}</TableCell>
+                    <TableCell>{doc.partyName ?? doc.companyName}</TableCell>
+                    <TableCell>{pluralItems(doc.itemCount)}</TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {doc.totalQtyDisplay}
+                    </TableCell>
+                    <TableCell>{formatDate(doc.transactionDate)}</TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDetail(doc);
+                        }}
+                      >
+                        View
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
 
-          {/* Mobile cards */}
+          {/* Mobile document cards */}
           <div className="grid gap-2 md:hidden">
-            {filtered.map((t) => (
+            {filtered.map((doc) => (
               <button
-                key={t.id}
+                key={doc.key}
                 type="button"
-                onClick={() => setDetail(t)}
-                className="flex items-center gap-3 rounded-xl border bg-white p-3 text-left hover:bg-muted/40"
+                onClick={() => setDetail(doc)}
+                className="block w-full rounded-xl border bg-white p-3 text-left hover:bg-muted/40"
               >
-                <Badge variant={t.type === "received" ? "default" : "secondary"}>
-                  {t.type === "received" ? "REC" : "GIV"}
-                </Badge>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{t.material_name}</p>
-                  <p className="truncate text-xs text-zinc-500">
-                    {t.transaction_number} · {t.company_name} ·{" "}
-                    {new Intl.NumberFormat("en-IN").format(t.pieces)} pcs ·{" "}
-                    {formatDate(t.transaction_date)}
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-sm font-semibold">
+                    {doc.documentNumber}
                   </p>
+                  <Badge
+                    variant={doc.type === "received" ? "default" : "secondary"}
+                  >
+                    {doc.type === "received" ? "REC" : "GIV"}
+                  </Badge>
                 </div>
-                <ChevronRightIcon className="size-4 shrink-0 text-zinc-400" />
+                <p className="mt-0.5 text-xs text-zinc-500">
+                  {doc.type === "received" ? "Received" : "Given"} ·{" "}
+                  {categoryLabel(doc.recordCategory)}
+                </p>
+                <p className="mt-1 truncate text-sm font-medium">
+                  {doc.partyName ?? doc.companyName}
+                </p>
+                <div className="mt-2 flex items-center justify-between gap-2 border-t border-border pt-2">
+                  <p className="truncate text-xs text-zinc-500">
+                    {pluralItems(doc.itemCount)} · {doc.totalQtyDisplay} ·{" "}
+                    {formatDate(doc.transactionDate)}
+                  </p>
+                  <span className="inline-flex shrink-0 items-center gap-0.5 text-xs font-semibold text-zinc-500">
+                    View Details <ChevronRightIcon className="size-3.5" />
+                  </span>
+                </div>
               </button>
             ))}
           </div>
@@ -270,18 +317,18 @@ export function RecordsPage() {
       {/* Detail dialog */}
       {detail && (
         <TransactionDetailDialog
-          key={`detail-${detail.id}`}
-          transaction={detail}
+          key={`detail-${detail.key}`}
+          record={detail}
           open={!!detail}
           onOpenChange={(o) => !o && setDetail(null)}
           canEdit={canEditRecord({
             role,
             userId: user?.id,
-            transaction: detail,
+            transaction: detail.primary,
           })}
           isAdmin={Boolean(isAdmin)}
           onEdit={() => {
-            setEdit(detail);
+            setEdit(detail.primary);
             setDetail(null);
           }}
           onDelete={() => handleDelete(detail)}
@@ -301,16 +348,29 @@ export function RecordsPage() {
         />
       )}
 
-      {/* Delete confirmation */}
+      {/* Delete confirmation — acts on the whole document/challan */}
       <Dialog
         open={!!deleteTarget}
         onOpenChange={(o) => !o && !deleting && setDeleteTarget(null)}
       >
         <DialogContent className="max-w-sm">
-          <DialogTitle>Delete this transaction permanently?</DialogTitle>
+          <DialogTitle>
+            Delete this{" "}
+            {deleteTarget?.source === "documents" && deleteTarget?.type === "given"
+              ? "challan"
+              : "record"}{" "}
+            permanently?
+          </DialogTitle>
           <DialogDescription>
-            This will permanently remove this transaction and all of its stored
-            data. This action cannot be undone.
+            {deleteTarget &&
+              `This will permanently delete this ${
+                deleteTarget.source === "documents" &&
+                deleteTarget.type === "given"
+                  ? "challan"
+                  : "record"
+              } and all ${pluralItems(
+                deleteTarget.itemCount
+              ).toLowerCase()} in it. This action cannot be undone.`}
           </DialogDescription>
 
           {deleteTarget && (
@@ -318,25 +378,18 @@ export function RecordsPage() {
               <div className="flex items-center justify-between gap-2">
                 <TypeBadge type={deleteTarget.type} />
                 <span className="font-mono text-xs text-zinc-500">
-                  {deleteTarget.transaction_number}
+                  {deleteTarget.documentNumber}
                 </span>
               </div>
               <dl className="grid gap-2">
-                <Row label="Component" value={deleteTarget.material_name} />
+                <Row label="Category" value={categoryLabel(deleteTarget.recordCategory)} />
                 <Row
                   label={deleteTarget.type === "received" ? "From" : "To"}
-                  value={deleteTarget.company_name}
+                  value={deleteTarget.partyName ?? deleteTarget.companyName}
                 />
-                <Row
-                  label="Quantity"
-                  value={`${new Intl.NumberFormat("en-IN").format(
-                    deleteTarget.pieces
-                  )} pcs`}
-                />
-                <Row
-                  label="Date"
-                  value={formatDate(deleteTarget.transaction_date)}
-                />
+                <Row label="Items" value={pluralItems(deleteTarget.itemCount)} />
+                <Row label="Total Qty" value={deleteTarget.totalQtyDisplay} />
+                <Row label="Date" value={formatDate(deleteTarget.transactionDate)} />
               </dl>
             </div>
           )}
@@ -379,6 +432,16 @@ function Row({ label, value }: { label: string; value: string }) {
       <dd className="text-right font-medium">{value}</dd>
     </div>
   );
+}
+
+function categoryLabel(cat: RecordDocument["recordCategory"]): string {
+  if (cat === "manufacturing") return "Manufacturing";
+  if (cat === "other") return "Tools / Other";
+  return "—";
+}
+
+function pluralItems(n: number): string {
+  return `${n} ${n === 1 ? "Item" : "Items"}`;
 }
 
 function SummaryCard({

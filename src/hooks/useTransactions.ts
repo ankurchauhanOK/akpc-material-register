@@ -1,9 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { createClient } from "@/lib/supabase/client";
 import type {
+  Enums,
   Tables,
 } from "@/lib/supabase/database.types";
 import type { TransactionType, UnitType } from "@/lib/supabase/types";
+import { formatQty, UNIT_SHORT } from "@/lib/challan/challan-view";
 
 type Transaction = Tables<"transactions">;
 type Material = Tables<"materials">;
@@ -21,6 +23,12 @@ export type TransactionWithNames = Transaction & {
   source: "transactions" | "documents";
   /** For v2 rows: the owning receiving_documents.id. Null for legacy. */
   document_id: string | null;
+  /** For v2 item rows: optional line-level detail carried up for Records. */
+  hsn_code?: string | null;
+  item_remarks?: string | null;
+  line_no?: number | null;
+  customer_ref_no?: string | null;
+  customer_ref_date?: string | null;
 };
 
 async function fetchLegacy(supabase: ReturnType<typeof createClient>): Promise<TransactionWithNames[]> {
@@ -132,6 +140,11 @@ async function fetchReceiving(
         company_name: doc.party_company ?? doc.party_name ?? "—",
         source: "documents",
         document_id: doc.id,
+        hsn_code: item.hsn_code,
+        item_remarks: item.item_remarks,
+        line_no: item.line_no,
+        customer_ref_no: doc.customer_ref_no,
+        customer_ref_date: doc.customer_ref_date,
       });
     }
   }
@@ -210,6 +223,145 @@ export function summarizeByMaterial(
     map.set(t.material_id, current);
   }
   return [...map.values()].sort((a, b) => b.net - a.net);
+}
+
+export type RecordDocItem = {
+  id: string;
+  materialId: string;
+  materialName: string;
+  materialUnit: UnitType | null;
+  quantity: number;
+  unitPrice: number | null;
+  totalAmount: number;
+  hsnCode?: string | null;
+  itemRemarks?: string | null;
+  lineNo?: number | null;
+};
+
+export type RecordDocument = {
+  /** Identity key: `doc:<document_id>` for v2, `txn:<id>` for legacy. */
+  key: string;
+  source: "transactions" | "documents";
+  documentId: string | null;
+  documentNumber: string;
+  type: TransactionType;
+  recordCategory: Enums<"record_category"> | null;
+  companyId: string;
+  companyName: string;
+  partyName: string | null;
+  transactionDate: string;
+  createdAt: string;
+  createdBy: string | null;
+  challanPath: string | null;
+  challanNumber: string | null;
+  externalDocumentPath: string | null;
+  customerRefNo?: string | null;
+  customerRefDate?: string | null;
+  items: RecordDocItem[];
+  itemCount: number;
+  totalByUnit: { unit: string; label: string; qty: number }[];
+  totalQtyDisplay: string;
+  /** First ledger row of the document — carries header fields for edit/detail. */
+  primary: TransactionWithNames;
+};
+
+/**
+ * Collapse the flat movement ledger into ONE record per document/challan.
+ *
+ * A v2 receiving_document expands into one ledger row PER ITEM in
+ * fetchReceiving(); this regroups those rows under their document identity
+ * (receiving_documents.id) so Records renders one challan per row with the
+ * items nested. Legacy transactions are single-item by design and remain one
+ * record each (grouping key = transaction id, never company/date).
+ *
+ * Pure client-side transform — no database change, no N+1 (the underlying
+ * document query already fetches items in one call).
+ */
+export function groupRecordsByDocument(
+  rows: TransactionWithNames[]
+): RecordDocument[] {
+  const byKey = new Map<string, RecordDocument>();
+  for (const t of rows) {
+    const key = t.source === "documents" ? `doc:${t.document_id}` : `txn:${t.id}`;
+    let rec = byKey.get(key);
+    if (!rec) {
+      rec = {
+        key,
+        source: t.source,
+        documentId: t.document_id,
+        documentNumber: t.transaction_number,
+        type: t.type,
+        recordCategory: t.record_category ?? null,
+        companyId: t.company_id,
+        companyName: t.company_name,
+        partyName: t.party_name ?? null,
+        transactionDate: t.transaction_date,
+        createdAt: t.created_at,
+        createdBy: t.created_by ?? null,
+        challanPath: t.challan_path ?? null,
+        challanNumber: t.challan_number ?? null,
+        externalDocumentPath: t.external_document_path ?? null,
+        customerRefNo: t.customer_ref_no ?? null,
+        customerRefDate: t.customer_ref_date ?? null,
+        items: [],
+        itemCount: 0,
+        totalByUnit: [],
+        totalQtyDisplay: "",
+        primary: t,
+      };
+      byKey.set(key, rec);
+    }
+    rec.items.push({
+      id: t.id,
+      materialId: t.material_id,
+      materialName: t.material_name,
+      materialUnit: t.material_unit ?? null,
+      quantity: t.pieces,
+      unitPrice: t.unit_price,
+      totalAmount: t.total_amount,
+      hsnCode: t.hsn_code ?? null,
+      itemRemarks: t.item_remarks ?? null,
+      lineNo: t.line_no ?? null,
+    });
+  }
+
+  return [...byKey.values()]
+    .map((rec) => {
+      // Items in challan line order (legacy rows have no line_no; keep order).
+      const items = [...rec.items].sort((a, b) => {
+        if (a.lineNo != null && b.lineNo != null) return a.lineNo - b.lineNo;
+        return 0;
+      });
+      const byUnit = new Map<
+        string,
+        { unit: string; label: string; qty: number }
+      >();
+      for (const it of items) {
+        const unit = it.materialUnit ?? "pieces";
+        const cur = byUnit.get(unit) ?? {
+          unit,
+          label: UNIT_SHORT[unit] ?? unit,
+          qty: 0,
+        };
+        cur.qty += it.quantity;
+        byUnit.set(unit, cur);
+      }
+      const totalByUnit = [...byUnit.values()].sort((a, b) => b.qty - a.qty);
+      return {
+        ...rec,
+        items,
+        itemCount: items.length,
+        totalByUnit,
+        totalQtyDisplay: totalByUnit
+          .map((u) => `${formatQty(u.qty)} ${u.label}`)
+          .join(" · "),
+      };
+    })
+    .sort((a, b) => {
+      const cmp = b.transactionDate.localeCompare(a.transactionDate);
+      if (cmp !== 0) return cmp;
+      return b.createdAt.localeCompare(a.createdAt);
+    });
 }
 
 /** All distinct active materials for the Material filter. */

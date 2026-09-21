@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Dialog,
   DialogContent,
@@ -9,14 +10,21 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { FileTextIcon } from "lucide-react";
 import { TypeBadge } from "@/components/records/type-badge";
-import type { TransactionWithNames } from "@/hooks/useTransactions";
+import type { RecordDocument } from "@/hooks/useTransactions";
 import { createSignedChallanUrl } from "@/lib/supabase/storage";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, formatINR } from "@/lib/format";
+import { formatQty, UNIT_SHORT } from "@/lib/challan/challan-view";
 
+/**
+ * Document detail view for Records — represents ONE challan/document with
+ * all of its item lines. For legacy single-item rows it behaves like the
+ * old transaction detail.
+ */
 export function TransactionDetailDialog({
-  transaction,
+  record,
   open,
   onOpenChange,
   canEdit,
@@ -24,7 +32,7 @@ export function TransactionDetailDialog({
   onEdit,
   onDelete,
 }: {
-  transaction: TransactionWithNames;
+  record: RecordDocument;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   canEdit: boolean;
@@ -39,17 +47,19 @@ export function TransactionDetailDialog({
     if (!open) return;
     let cancelled = false;
 
-    if (transaction.challan_path) {
-      createSignedChallanUrl(transaction.challan_path).then((url) => {
-        if (!cancelled) setSignedUrl(url);
-      });
+    if (record.challanPath) {
+      createSignedChallanUrl(record.challanPath)
+        .then((url) => {
+          if (!cancelled) setSignedUrl(url);
+        })
+        .catch(() => {});
     }
 
-    if (transaction.created_by) {
+    if (record.createdBy) {
       createClient()
         .from("profiles")
         .select("full_name")
-        .eq("id", transaction.created_by)
+        .eq("id", record.createdBy)
         .maybeSingle()
         .then(({ data }) => {
           if (!cancelled && data?.full_name) setCreatorName(data.full_name);
@@ -59,39 +69,95 @@ export function TransactionDetailDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, transaction]);
+  }, [open, record]);
 
   const isPdf = signedUrl?.includes(".pdf");
+  const party = record.partyName ?? record.companyName;
+  const category =
+    record.recordCategory === "manufacturing"
+      ? "Manufacturing"
+      : record.recordCategory === "other"
+        ? "Tools / Other"
+        : "—";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
-        <DialogTitle>{transaction.transaction_number}</DialogTitle>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+        <DialogTitle>{record.documentNumber}</DialogTitle>
         <DialogDescription className="flex items-center gap-2">
-          <TypeBadge type={transaction.type} />
+          <TypeBadge type={record.type} />
+          <span className="text-zinc-500">{category}</span>
         </DialogDescription>
 
         <dl className="grid gap-3 text-sm">
-          <Row label="Material" value={transaction.material_name} />
           <Row
-            label={transaction.type === "received" ? "From" : "To"}
-            value={transaction.company_name}
+            label={record.type === "received" ? "From" : "To"}
+            value={party}
           />
-          <Row
-            label="Pieces"
-            value={`${new Intl.NumberFormat("en-IN").format(transaction.pieces)} pcs`}
-          />
-          <Row label="Total amount" value={formatINR(transaction.total_amount)} />
-          <Row label="Date" value={formatDate(transaction.transaction_date)} />
+          <Row label="Items" value={`${record.itemCount}`} />
+          <Row label="Total Qty" value={record.totalQtyDisplay} />
+          {record.source === "transactions" && (
+            <Row
+              label="Total amount"
+              value={formatINR(
+                record.items.reduce((s, i) => s + i.totalAmount, 0)
+              )}
+            />
+          )}
+          <Row label="Date" value={formatDate(record.transactionDate)} />
+          {record.customerRefNo && (
+            <Row label="Customer Ref. No." value={record.customerRefNo} />
+          )}
+          {record.customerRefDate && (
+            <Row
+              label="Customer Ref. Date"
+              value={formatDate(record.customerRefDate)}
+            />
+          )}
           <Row label="Created by" value={creatorName} />
-          <Row label="Created" value={formatDate(transaction.created_at)} />
+          <Row label="Created" value={formatDate(record.createdAt)} />
         </dl>
 
-        {/* Challan preview via signed URL — never the raw path */}
+        {/* All item lines of this document */}
         <div>
-          <p className="mb-1.5 text-sm font-medium">Challan</p>
-          {transaction.challan_path ? (
-            signedUrl ? (
+          <p className="mb-1.5 text-sm font-medium">
+            Items ({record.itemCount})
+          </p>
+          <ol className="divide-y rounded-lg border">
+            {record.items.map((item) => (
+              <li
+                key={item.id}
+                className="flex items-start justify-between gap-3 p-3"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">{item.materialName}</p>
+                  {item.hsnCode ? (
+                    <p className="mt-0.5 text-xs text-zinc-500">
+                      HSN/SAC: {item.hsnCode}
+                    </p>
+                  ) : null}
+                  {item.itemRemarks ? (
+                    <p className="mt-0.5 text-xs text-zinc-500">
+                      {item.itemRemarks}
+                    </p>
+                  ) : null}
+                </div>
+                <p className="shrink-0 text-sm">
+                  {formatQty(item.quantity)}{" "}
+                  {item.materialUnit
+                    ? (UNIT_SHORT[item.materialUnit] ?? item.materialUnit)
+                    : ""}
+                </p>
+              </li>
+            ))}
+          </ol>
+        </div>
+
+        {/* Legacy challan attachment via signed URL — never the raw path */}
+        {record.challanPath && (
+          <div>
+            <p className="mb-1.5 text-sm font-medium">Challan</p>
+            {signedUrl ? (
               isPdf ? (
                 <div className="flex items-center gap-2 rounded-lg border p-3">
                   <span className="flex-1 text-sm">PDF challan</span>
@@ -114,11 +180,23 @@ export function TransactionDetailDialog({
               )
             ) : (
               <p className="text-sm text-zinc-400">Loading…</p>
-            )
-          ) : (
-            <p className="text-sm text-zinc-400">No challan attached.</p>
-          )}
-        </div>
+            )}
+          </div>
+        )}
+
+        {/* A real Delivery Challan lives in receiving_documents: reopen it
+            read-only from the persisted snapshot (no new record, no new DC). */}
+        {record.source === "documents" && record.type === "given" && (
+          <Link
+            href={`/documents/${record.documentNumber}/challan`}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Button variant="outline" className="w-full">
+              <FileTextIcon className="size-4" /> View Challan
+            </Button>
+          </Link>
+        )}
 
         {(canEdit || isAdmin) && (
           <DialogFooter>
