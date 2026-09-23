@@ -33,6 +33,7 @@ export function DocumentDetail({
   const hasItems = Boolean(transaction.items);
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [pdfName, setPdfName] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const { setTitle } = useMobileHeaderTitle();
 
@@ -66,6 +67,9 @@ export function DocumentDetail({
         component.part_code
       );
       setPdfUrl(URL.createObjectURL(blob));
+      setPdfName(
+        `${transaction.transaction_number.replace(/\//g, "-")}-${Date.now()}.pdf`
+      );
     } finally {
       setGenerating(false);
     }
@@ -180,7 +184,7 @@ export function DocumentDetail({
           {pdfUrl ? (
             <a
               href={pdfUrl}
-              download={`${transaction.transaction_number.replace(/\//g, "-")}.pdf`}
+              download={pdfName}
               className="inline-flex h-10 items-center rounded-lg bg-emerald-600 px-3 text-sm font-medium text-white hover:bg-emerald-700"
             >
               <FileDownIcon className="size-4" /> Download PDF
