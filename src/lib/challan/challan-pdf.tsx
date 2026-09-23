@@ -37,10 +37,17 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
+    width: "100%",
   },
+  // Fixed two-column header: FROM (left) and DELIVERY CHALLAN metadata
+  // (right) are independent regions. The FROM block has a hard width so the
+  // address wraps inside it instead of marching into the metadata column;
+  // the metadata block has its own fixed width and stays anchored regardless
+  // of address length. Geometry: 253 (FROM) + gap via space-between + 264
+  // (META) = 517 pt, within the 535.28 pt printable width.
   fromBlock: {
-    flexGrow: 1,
-    paddingRight: 18,
+    width: 253,
+    flexShrink: 0,
   },
   fromLabel: {
     fontSize: G.fontSmall,
@@ -55,14 +62,24 @@ const styles = StyleSheet.create({
     color: G.textTitle,
     textTransform: "uppercase",
     marginTop: 4,
+    flexShrink: 1,
   },
+  // The address Text must carry the column width itself: react-pdf (Yoga)
+  // sizes a width-less child Text at its intrinsic (unwrapped) width and
+  // lets it overflow the parent instead of wrapping. A parent `width` alone
+  // never constrains such a child. Width + flexShrink forces the wrap and
+  // keeps the address inside the FROM column.
   fromLine: {
     fontSize: G.fontBody,
     color: G.textBody,
     marginTop: 1,
+    width: 253,
+    flexShrink: 1,
   },
   docTitleBlock: {
     alignItems: "flex-end",
+    width: 264,
+    flexShrink: 0,
   },
   docTitle: {
     fontSize: G.fontTitle,
