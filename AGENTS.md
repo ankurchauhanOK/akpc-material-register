@@ -38,7 +38,67 @@ replacing the paper receiving/giving register. **This is NOT an ERP.**
   (Settings → Company Profile, admin-only). It is **snapshotted** onto every
   document at creation time (`our_*` columns on `receiving_documents`) so old
   challans stay historically accurate. Party GSTIN/State are also snapshotted
-  (`party_gstin`, `party_state`).
+  (`party_gstin`, `party_state`). The same card also holds the Tax Invoice
+  footer (bank details, terms, declaration) and e-mail; a party keeps its own
+  `email` for the invoice header. Invoice GST rate options come from
+  `GST_PERCENTS` in `src/lib/supabase/types.ts` (`0 | 5 | 9 | 12 | 18 | 28`).
+- **Invoices (tax invoice module):** A Send (`type = 'given'`) challan is
+  billable on exactly one invoice — `invoice_challans.challan_id` is UNIQUE and
+  `create_invoice` re-checks it, so a challan can never be double-billed. An
+  invoice bills a challan WHOLE (all its lines, including other components).
+  Numbers are `INV/YYYY-YY/NNN`, generated in the DB like REC/GIV; the client
+  never derives one. Lines carry their own rate/GST (`invoice_items`), unlike
+  the challan, which stores none.
+  - **All invoice writes go through the security-definer RPCs** `create_invoice`,
+    `update_invoice`, `delete_invoice`. The invoice RLS policies are
+    `with check (false)` / `using (false)` **on purpose** so a client cannot
+    bypass the RPC's role and business-rule checks. Never add a direct
+    `supabase.from("invoices").insert/update/delete` — and note that a direct
+    DELETE silently matches zero rows rather than erroring, so it looks
+    successful while leaving the invoice alive. Use `delete_invoice`.
+  - **Role guards inside a PL/pgSQL function must be NULL-safe.** A
+    `current_role()` comparison fails OPEN in `IF ... THEN` form when the role
+    is NULL, because `NULL <> 'admin'` and `NULL not in (...)` are both NULL
+    and `IF NULL` is false, so the guard is *skipped*. `current_role()` is NULL
+    for a request with no session, a JWT whose user has no `profiles` row, and
+    a **deactivated** user (`is_active = false`) — so a naive guard let those
+    callers through. Write `if current_role() is distinct from 'admin'` or
+    `if current_role() is null or current_role() not in (...)`. RLS policies are
+    safe by contrast: `using (current_role() = 'admin')` fails CLOSED, since a
+    NULL predicate hides the row. See
+    `20260928000001_invoice_rpc_null_safe_role_guards.sql`.
+  - **AKPC bills intra-state, so GST is always CGST + SGST, never IGST.**
+    `invoice_recalc_totals()` splits with `CGST = round(tax/2, 2)` and
+    `SGST = tax - CGST` — SGST is the *residual* so the pair always sums back
+    to `gst_total` even with odd paise. The same rule is mirrored per HSN band
+    in `invoice-view.ts`. `gst_total` is kept as their sum.
+  - **Paise are always kept** — nothing is rounded to whole rupees. The
+    printed "Rounding" row is presentation-only: it shows
+    `total_amount - (subtotal + CGST + SGST)` so the printed total ties to the
+    stored total exactly (normally `₹0.00`; ±0.01 only when the server's
+    independent subtotal/tax/line-total roundings drift by a sub-paise).
+  - **Snapshot fields** on `invoices` include our email, bank details, terms and
+    declaration, plus the party's email/GSTIN. `fetchPartySnapshot()` must
+    return exactly the jsonb keys the RPCs read with `->>` (see
+    `20260927000001_invoice_module.sql` §7) — a renamed key silently snapshots
+    as NULL. `PartySnapshot` in `src/lib/invoices/types.ts` is that contract.
+  - **Printed document:** the on-screen A4 (`invoice-preview.tsx`) is the
+    visual reference; the PDF (`invoice-pdf.tsx`) reproduces it. Both build
+    from the single view model `buildInvoiceView()` in `invoice-view.ts`, so
+    they cannot disagree. The `amountInWords()` helper renders the
+    "Amount Chargeable (in words)" line in the Indian scale
+    (`Six Thousand Seven Hundred Ninety Seven rupees and zero paisa only.`).
+  - **Invoice numbers contain slashes**, so the route is a catch-all
+    `invoices/[...invoiceNumber]`; `parseInvoiceSlug()` rejoins the segments
+    with `/` and a trailing `preview` segment switches to the A4
+    (`/invoices/INV/2026-27/001/preview`). It is deliberately separate from
+    `documents/normalize-slug.ts` because that one strips a `challan` segment.
+  - **Deleting a master or document sweeps its invoices** so an invoiced
+    challan never blocks the delete and never leaves a stale header total
+    behind. `sweepInvoices()` in `deleteMasters.ts` calls `delete_invoice` once
+    per invoice (an invoice that bills several components is removed whole).
+    The count is disclosed to the admin first via `MasterUsageBreakdown.invoices`
+    (distinct invoices, not link rows).
 - RLS enabled on all tables; role-based policies (`admin` / `operator` / `viewer`).
   Never expose the service-role key in frontend code.
 - Challans go to the private `challans` storage bucket; served via signed URLs.

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronRightIcon, FolderOpenIcon, Loader2Icon } from "lucide-react";
 import { toast } from "sonner";
@@ -24,6 +25,7 @@ import {
 } from "@/components/ui/table";
 import { TypeBadge } from "@/components/records/type-badge";
 import { useAuth } from "@/hooks/useAuth";
+import { useInvoiceLinksForChallans } from "@/hooks/useInvoices";
 import type { Role } from "@/lib/supabase/types";
 import {
   useTransactions,
@@ -67,6 +69,7 @@ function canEditRecord({
 export function RecordsPage() {
   const { role, isAdmin, user } = useAuth();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [type, setType] = useState<FilterType>("all");
   const [materialId, setMaterialId] = useState<string>("");
@@ -84,6 +87,17 @@ export function RecordsPage() {
 
   // One top-level record per document/challan (never one per item line).
   const records = useMemo(() => groupRecordsByDocument(rows), [rows]);
+
+  // Which Send challans are already invoiced (and by which invoice), resolved
+  // for the whole page in ONE query rather than per row.
+  const invoiceChallanIds = useMemo(
+    () =>
+      records
+        .filter((d) => d.type === "given" && d.documentId)
+        .map((d) => d.documentId as string),
+    [records]
+  );
+  const { links: invoiceLinks } = useInvoiceLinksForChallans(invoiceChallanIds);
 
   const movement = useMemo(() => summarizeMovement(rows), [rows]);
 
@@ -255,17 +269,43 @@ export function RecordsPage() {
                     </TableCell>
                     <TableCell>{formatDate(doc.transactionDate)}</TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDetail(doc);
-                        }}
-                      >
-                        View
-                      </Button>
+                      <div className="flex items-center justify-end gap-1">
+                        {/* Billing action, Send rows only: a Send challan is
+                            billable once, so this is either a link to the
+                            invoice that bills it or the entry point to raise
+                            one. */}
+                        {doc.type === "given" && doc.documentId && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const inv = invoiceLinks.get(doc.documentId as string);
+                              router.push(
+                                inv
+                                  ? `/invoices/${inv}`
+                                  : `/invoices/new?challan=${encodeURIComponent(doc.documentId as string)}`
+                              );
+                            }}
+                          >
+                            {invoiceLinks.get(doc.documentId as string)
+                              ? "Invoice"
+                              : "Bill"}
+                          </Button>
+                        )}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDetail(doc);
+                          }}
+                        >
+                          View
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -286,11 +326,26 @@ export function RecordsPage() {
                   <p className="truncate text-sm font-semibold">
                     {doc.documentNumber}
                   </p>
-                  <Badge
-                    variant={doc.type === "received" ? "default" : "secondary"}
-                  >
-                    {doc.type === "received" ? "REC" : "GIV"}
-                  </Badge>
+                  <div className="flex shrink-0 items-center gap-1">
+                    {/* Invoiced marker. The whole card is one button, so this
+                        is an indicator only — the Invoice/Bill action lives on
+                        the desktop row and the challan detail screen. */}
+                    {doc.type === "given" &&
+                      doc.documentId &&
+                      invoiceLinks.get(doc.documentId) && (
+                        <Badge
+                          variant="outline"
+                          className="border-emerald-600 text-[10px] text-emerald-700"
+                        >
+                          INV
+                        </Badge>
+                      )}
+                    <Badge
+                      variant={doc.type === "received" ? "default" : "secondary"}
+                    >
+                      {doc.type === "received" ? "REC" : "GIV"}
+                    </Badge>
+                  </div>
                 </div>
                 <p className="mt-0.5 text-xs text-zinc-500">
                   {doc.type === "received" ? "Received" : "Given"} ·{" "}

@@ -1,5 +1,6 @@
 import type { Database } from "@/lib/supabase/database.types";
 import { createClient } from "@/lib/supabase/client";
+import { sweepInvoicesForChallans } from "@/lib/masters/deleteMasters";
 
 type Row = Database["public"]["Tables"]["transactions"]["Row"];
 type ReceivingDocRow =
@@ -126,6 +127,7 @@ export type DeleteTransactionTarget =
  * - legacy rows: the `transactions` row itself
  * - v2 document rows: the document header AND all its line items
  *   (items are deleted first — document_id FK has no ON DELETE CASCADE)
+ *   plus any invoice that bills it, removed whole
  */
 export async function deleteTransactionPermanently(
   target: DeleteTransactionTarget
@@ -133,6 +135,11 @@ export async function deleteTransactionPermanently(
   const supabase = createClient();
 
   if (target.source === "documents") {
+    // An invoiced challan must lose its invoice first, otherwise the DB's
+    // ON DELETE CASCADE would strip invoice lines and leave the invoice header
+    // totals silently wrong.
+    await sweepInvoicesForChallans([target.documentId]);
+
     const { error: itemsError } = await supabase
       .from("receiving_document_items")
       .delete()

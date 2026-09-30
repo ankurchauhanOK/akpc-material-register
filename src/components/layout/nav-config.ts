@@ -5,6 +5,7 @@ import {
   ScrollTextIcon,
   BarChart3Icon,
   ClipboardCheckIcon,
+  ReceiptTextIcon,
   SettingsIcon,
 } from "lucide-react";
 import type { Enums } from "@/lib/supabase/database.types";
@@ -32,6 +33,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { key: "dashboard", label: "Dashboard", href: "/dashboard", icon: LayoutDashboardIcon, show: () => true },
       { key: "components", label: "Components", href: "/components", icon: BoxIcon, show: () => true },
       { key: "records", label: "Records", href: "/records", icon: ScrollTextIcon, show: () => true },
+      { key: "invoices", label: "Invoices", href: "/invoices", icon: ReceiptTextIcon, show: () => true },
     ],
   },
   {

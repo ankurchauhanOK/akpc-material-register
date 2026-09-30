@@ -132,12 +132,13 @@
   }
 }
 
-/* Challan Preview: print the A4 document only, hide chrome. */
+/* Challan / Invoice A4 preview: print the document only, hide chrome. */
 @media print {
   .no-print {
     display: none !important;
   }
-  .challan-a4 {
+  .challan-a4,
+  .invoice-a4 {
     width: 210mm !important;
     max-width: none !important;
     margin: 0 !important;
@@ -150,7 +151,8 @@
   }
 }
 
-.challan-a4 {
+.challan-a4,
+.invoice-a4 {
   @apply bg-white;
 }
 

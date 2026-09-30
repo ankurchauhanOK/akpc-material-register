@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -23,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
+import { formatINR } from "@/lib/format";
 import type { Enums, Tables } from "@/lib/supabase/database.types";
 import {
   COMPONENT_CATEGORIES,
@@ -45,7 +47,7 @@ import { lookupPincode } from "@/lib/pincode";
 /** Human-readable disclosure of dependent records a cascade will remove. */
 function cascadeNote(b: MasterUsageBreakdown | null): string | null {
   if (!b) return "Checking for associated records…";
-  const total = b.documents + b.items + b.transactions;
+  const total = b.documents + b.items + b.transactions + b.invoices;
   if (total === 0) return null;
   const parts: string[] = [];
   if (b.documents)
@@ -54,9 +56,13 @@ function cascadeNote(b: MasterUsageBreakdown | null): string | null {
     parts.push(`${b.items} line item${b.items === 1 ? "" : "s"}`);
   if (b.transactions)
     parts.push(`${b.transactions} transaction${b.transactions === 1 ? "" : "s"}`);
+  if (b.invoices)
+    parts.push(`${b.invoices} invoice${b.invoices === 1 ? "" : "s"}`);
   let msg = `This will also permanently delete its ${parts.join(", ")}.`;
   if (b.ghostDocuments > 0)
     msg += ` Includes ${b.ghostDocuments} cancelled or archived record${b.ghostDocuments === 1 ? "" : "s"} not visible in the ledger.`;
+  if (b.invoices > 0)
+    msg += ` Any invoice listed here is removed whole, including lines for other components.`;
   return msg;
 }
 
@@ -159,6 +165,7 @@ function ComponentsSection({ isAdmin }: { isAdmin: boolean }) {
     unit: "pieces" as UnitType,
     category: "" as ComponentCategory | "",
     partCode: "",
+    defaultPrice: "",
   });
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -170,7 +177,7 @@ function ComponentsSection({ isAdmin }: { isAdmin: boolean }) {
   function openCreate() {
     setCreating(true);
     setEditing(null);
-    setForm({ name: "", unit: "pieces", category: "", partCode: "" });
+    setForm({ name: "", unit: "pieces", category: "", partCode: "", defaultPrice: "" });
     setErr(null);
   }
   function openEdit(m: Material) {
@@ -181,6 +188,7 @@ function ComponentsSection({ isAdmin }: { isAdmin: boolean }) {
       unit: m.unit,
       category: m.category ?? "",
       partCode: m.part_code ?? "",
+      defaultPrice: m.default_price?.toString() ?? "",
     });
     setErr(null);
   }
@@ -200,6 +208,10 @@ function ComponentsSection({ isAdmin }: { isAdmin: boolean }) {
         unit: form.unit,
         category: form.category ? (form.category as ComponentCategory) : null,
         part_code: form.partCode.trim() || null,
+        default_price:
+          form.defaultPrice.trim() === ""
+            ? null
+            : Math.round(Number(form.defaultPrice) * 100) / 100,
       };
       if (creating) {
         const { error } = await supabase.from("materials").insert(payload);
@@ -241,6 +253,7 @@ function ComponentsSection({ isAdmin }: { isAdmin: boolean }) {
         items: 0,
         transactions: 0,
         ghostDocuments: 0,
+        invoices: 0,
       });
     }
   }
@@ -340,6 +353,19 @@ function ComponentsSection({ isAdmin }: { isAdmin: boolean }) {
                 className="h-10"
               />
             </Field>
+            <Field label="Default Price (₹)">
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={form.defaultPrice}
+                onChange={(e) =>
+                  setForm({ ...form, defaultPrice: e.target.value })
+                }
+                placeholder="Used as the base rate when invoicing"
+                className="h-10"
+              />
+            </Field>
           </div>
           {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
           <div className="mt-3 flex gap-2">
@@ -381,6 +407,9 @@ function ComponentsSection({ isAdmin }: { isAdmin: boolean }) {
                   {UNIT_LABELS[m.unit]}
                   {m.category ? ` · ${CATEGORY_LABELS[m.category]}` : " · Pending"}
                   {m.part_code ? ` · ${m.part_code}` : ""}
+                  {m.default_price != null
+                    ? ` · ${formatINR(m.default_price)}`
+                    : ""}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
@@ -472,6 +501,7 @@ function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
     location: "",
     post: "",
     contact: "",
+    email: "",
     pincode: "",
     gstin: "",
     state: "",
@@ -496,6 +526,7 @@ function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
       location: "",
       post: "",
       contact: "",
+      email: "",
       pincode: "",
       gstin: "",
       state: "",
@@ -513,6 +544,7 @@ function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
       location: c.location ?? "",
       post: c.post ?? "",
       contact: c.contact ?? "",
+      email: c.email ?? "",
       pincode: c.pincode ?? "",
       gstin: c.gstin ?? "",
       state: c.state ?? "",
@@ -567,6 +599,7 @@ function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
         location: form.location.trim() || null,
         post: form.post.trim() || null,
         contact: form.contact.trim() || null,
+        email: form.email.trim() || null,
         pincode: form.pincode.trim() || null,
         gstin: form.gstin.trim() || null,
         state: form.state.trim() || null,
@@ -612,6 +645,7 @@ function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
         items: 0,
         transactions: 0,
         ghostDocuments: 0,
+        invoices: 0,
       });
     }
   }
@@ -710,6 +744,15 @@ function PartiesSection({ isAdmin }: { isAdmin: boolean }) {
                 value={form.contact}
                 onChange={(e) => setForm({ ...form, contact: e.target.value })}
                 placeholder="e.g. 98xxxxxxx"
+                className="h-10"
+              />
+            </Field>
+            <Field label="E-mail">
+              <Input
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                placeholder="e.g. billing@client.in"
                 className="h-10"
               />
             </Field>
@@ -889,6 +932,13 @@ function CompanyProfileSection() {
     pincode: "",
     gstin: "",
     pan: "",
+    email: "",
+    bankAccountName: "",
+    bankAccountNumber: "",
+    bankIfsc: "",
+    bankBranch: "",
+    termsAndConditions: "",
+    declaration: "",
   });
   const [loaded, setLoaded] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -910,6 +960,13 @@ function CompanyProfileSection() {
       pincode: settings.pincode ?? "",
       gstin: settings.gstin ?? "",
       pan: settings.pan ?? "",
+      email: settings.email ?? "",
+      bankAccountName: settings.bank_account_name ?? "",
+      bankAccountNumber: settings.bank_account_number ?? "",
+      bankIfsc: settings.bank_ifsc ?? "",
+      bankBranch: settings.bank_branch ?? "",
+      termsAndConditions: settings.terms_and_conditions ?? "",
+      declaration: settings.declaration ?? "",
     });
     setLoaded(true);
   }
@@ -942,6 +999,12 @@ function CompanyProfileSection() {
     );
   }
 
+  /** Persists the whole single-row company_settings upsert.
+   *
+   *  Every card in this section (company details, Invoice Bank Details, Terms &
+   *  Declaration) shares this one save rather than each writing its own slice:
+   *  company_settings is a single row with no per-card ownership, so a partial
+   *  update would race with the other cards' unsaved edits. */
   async function save() {
     if (saving) return;
     if (!form.companyName.trim()) {
@@ -962,6 +1025,13 @@ function CompanyProfileSection() {
         pincode: form.pincode.trim() || null,
         gstin: form.gstin.trim().toUpperCase() || null,
         pan: form.pan.trim().toUpperCase() || null,
+        email: form.email.trim() || null,
+        bank_account_name: form.bankAccountName.trim() || null,
+        bank_account_number: form.bankAccountNumber.trim() || null,
+        bank_ifsc: form.bankIfsc.trim().toUpperCase() || null,
+        bank_branch: form.bankBranch.trim() || null,
+        terms_and_conditions: form.termsAndConditions.trim() || null,
+        declaration: form.declaration.trim() || null,
       };
       const { error } = await supabase
         .from("company_settings")
@@ -984,8 +1054,9 @@ function CompanyProfileSection() {
     <div>
       <p className="mb-4 text-sm text-zinc-500">
         Your company details appear in the FROM section of every Delivery
-        Challan. Saved information is snapshotted onto each document at the
-        time it is created.
+        Challan and in the Tax Invoice header. Saved information is
+        snapshotted onto each document at the time it is created, so editing
+        it here never rewrites a document you have already issued.
       </p>
 
       <div className="rounded-xl border bg-white p-5">
@@ -1087,6 +1158,20 @@ function CompanyProfileSection() {
               className="h-10 uppercase"
             />
           </Field>
+          <Field label="E-mail">
+            <Input
+              type="email"
+              value={form.email}
+              onChange={(e) =>
+                setForm({ ...form, email: e.target.value })
+              }
+              placeholder="e.g. accounts@akpc.in"
+              className="h-10"
+            />
+            <p className="text-xs text-zinc-500">
+              Printed in the Tax Invoice header.
+            </p>
+          </Field>
         </div>
 
         {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
@@ -1099,6 +1184,116 @@ function CompanyProfileSection() {
         <div className="mt-4">
           <Button onClick={save} disabled={saving}>
             {saving ? "Saving…" : "Save Company Profile"}
+          </Button>
+        </div>
+      </div>
+
+      {/* Invoice bank details — its own card so the purpose is obvious and
+          there is room for other company banking information later. */}
+      <div className="mt-4 rounded-xl border bg-white p-5">
+        <h3 className="text-sm font-semibold">Invoice Bank Details</h3>
+        <p className="mb-4 text-xs text-zinc-500">
+          Printed in the Bank Details block at the bottom of every Tax Invoice.
+          Leave a field blank to omit that row. These values are snapshotted
+          onto each invoice when it is created, so later edits here never
+          rewrite an invoice you have already issued.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Bank Account Name">
+            <Input
+              value={form.bankAccountName}
+              onChange={(e) =>
+                setForm({ ...form, bankAccountName: e.target.value })
+              }
+              placeholder="e.g. AK Precision Components"
+              className="h-10"
+            />
+          </Field>
+          <Field label="A/C Number">
+            <Input
+              value={form.bankAccountNumber}
+              onChange={(e) =>
+                setForm({ ...form, bankAccountNumber: e.target.value })
+              }
+              placeholder="e.g. 50200012345678"
+              className="h-10"
+            />
+          </Field>
+          <Field label="IFSC">
+            <Input
+              value={form.bankIfsc}
+              onChange={(e) =>
+                setForm({ ...form, bankIfsc: e.target.value.toUpperCase() })
+              }
+              placeholder="e.g. SBIN0001234"
+              className="h-10 uppercase"
+            />
+          </Field>
+          <Field label="Branch">
+            <Input
+              value={form.bankBranch}
+              onChange={(e) =>
+                setForm({ ...form, bankBranch: e.target.value })
+              }
+              placeholder="e.g. Rudrapur"
+              className="h-10"
+            />
+          </Field>
+        </div>
+
+        {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
+
+        <div className="mt-4">
+          <Button onClick={save} disabled={saving}>
+            {saving ? "Saving…" : "Save Invoice Bank Details"}
+          </Button>
+        </div>
+      </div>
+
+      {/* Terms & declaration are invoice footer content too, but not banking,
+          so they get their own card rather than sitting under a bank heading. */}
+      <div className="mt-4 rounded-xl border bg-white p-5">
+        <h3 className="text-sm font-semibold">Invoice Terms &amp; Declaration</h3>
+        <p className="mb-4 text-xs text-zinc-500">
+          Printed at the bottom of every Tax Invoice. Leave a field blank to
+          omit that block. One term per line; the number is added for you.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <Field label="Terms &amp; Conditions">
+              <Textarea
+                value={form.termsAndConditions}
+                onChange={(e) =>
+                  setForm({ ...form, termsAndConditions: e.target.value })
+                }
+                rows={5}
+                placeholder={
+                  "Payment terms 45 days\nInterest @ 18% p.a. will be charged if the payment is not made within the stipulated time.\nSubject to 'U.S. Nagar' Jurisdiction only."
+                }
+                className="text-sm"
+              />
+            </Field>
+          </div>
+          <div className="sm:col-span-2">
+            <Field label="Declaration">
+              <Textarea
+                value={form.declaration}
+                onChange={(e) =>
+                  setForm({ ...form, declaration: e.target.value })
+                }
+                rows={3}
+                placeholder="e.g. We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct."
+                className="text-sm"
+              />
+            </Field>
+          </div>
+        </div>
+
+        {err && <p className="mt-2 text-sm text-red-600">{err}</p>}
+
+        <div className="mt-4">
+          <Button onClick={save} disabled={saving}>
+            {saving ? "Saving…" : "Save Terms & Declaration"}
           </Button>
         </div>
       </div>

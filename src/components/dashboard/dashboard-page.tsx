@@ -14,6 +14,7 @@ import { ActivityChart } from "@/components/dashboard/activity-chart";
 import { SpendTable } from "@/components/dashboard/spend-table";
 import { RecentDocuments } from "@/components/dashboard/recent-documents";
 import { NeedsAttention } from "@/components/dashboard/needs-attention";
+import { InvoiceStrip } from "@/components/invoices/invoice-strip";
 
 function timeOfDayGreeting() {
   const h = new Date().getHours();
@@ -133,6 +134,9 @@ export function DashboardPage() {
 
         {/* KPI row */}
         <KpiCards kpis={data.kpis} />
+
+        {/* Billing summary */}
+        <InvoiceStrip />
 
         {/* Primary analytical grid */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[11fr_9fr]">

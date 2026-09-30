@@ -2,13 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { HouseIcon, BoxIcon, ScrollTextIcon, MoreHorizontalIcon } from "lucide-react";
+import {
+  HouseIcon,
+  BoxIcon,
+  ScrollTextIcon,
+  ReceiptTextIcon,
+  MoreHorizontalIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const BOTTOM_NAV_ITEMS = [
   { key: "home", label: "Home", href: "/dashboard", icon: HouseIcon },
   { key: "components", label: "Components", href: "/components", icon: BoxIcon },
   { key: "records", label: "Records", href: "/records", icon: ScrollTextIcon },
+  { key: "invoices", label: "Invoices", href: "/invoices", icon: ReceiptTextIcon },
   { key: "more", label: "More", href: "/settings", icon: MoreHorizontalIcon },
 ] as const;
 
@@ -20,6 +27,8 @@ export function MobileBottomNav() {
     if (href === "/components")
       return pathname === "/components" || pathname.startsWith("/components/");
     if (href === "/records") return pathname === "/records";
+    if (href === "/invoices")
+      return pathname === "/invoices" || pathname.startsWith("/invoices/");
     if (href === "/settings")
       return (
         pathname === "/settings" ||

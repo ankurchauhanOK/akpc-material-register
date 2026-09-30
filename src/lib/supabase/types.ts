@@ -24,7 +24,7 @@ export const DOCUMENT_SOURCES: DocumentSource[] = ["supplier", "shop", "customer
 export const DOCUMENT_KINDS: DocumentKind[] = ["raw-material", "other"];
 export const DOCUMENT_LINE_TYPES: DocumentLineType[] = ["component", "other"];
 export const PAYMENT_STATUSES: PaymentStatus[] = ["pending", "paid"];
-export const GST_PERCENTS: number[] = [0, 5, 12, 18, 28];
+export const GST_PERCENTS: number[] = [0, 5, 9, 12, 18, 28];
 
 export const UNIT_LABELS: Record<UnitType, string> = {
   pieces: "Pieces",

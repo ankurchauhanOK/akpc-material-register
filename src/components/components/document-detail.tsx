@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { FileDownIcon, FileTextIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { FileDownIcon, FileTextIcon, ReceiptIcon } from "lucide-react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { TypeBadge } from "@/components/records/type-badge";
 import { renderChallanPdf } from "@/lib/challan/challan-pdf";
+import { useInvoiceForChallan } from "@/hooks/useInvoices";
 import { createSignedChallanUrl } from "@/lib/supabase/storage";
 import { formatDate, formatINR } from "@/lib/format";
 import { UNIT_LABELS } from "@/lib/supabase/types";
@@ -198,6 +200,13 @@ export function DocumentDetail({
         </div>
       </div>
 
+      {/* Tax invoice raised against this challan. A Send challan is billable
+          exactly once, so this is either a direct link to the invoice that
+          bills it, or the entry point to raise one. */}
+      {!isReceive && (
+        <InvoiceBlock documentId={transaction.id} />
+      )}
+
       {/* External / source attachment */}
       {(transaction.external_document_path || transaction.challan_path) && (
         <div className="mt-4 rounded-xl border bg-white p-4">
@@ -234,6 +243,44 @@ function Row({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between gap-4 border-b pb-2 last:border-0 last:pb-0">
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="text-right font-medium">{value}</dd>
+    </div>
+  );
+}
+
+/** Shows the tax invoice that bills this challan, or the button to raise one. */
+function InvoiceBlock({ documentId }: { documentId: string }) {
+  const { invoiceNumber, isLoading } = useInvoiceForChallan(documentId);
+
+  return (
+    <div className="mt-4 rounded-xl border bg-white p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold">Tax Invoice</p>
+          <p className="text-xs text-zinc-500">
+            {isLoading
+              ? "Checking…"
+              : invoiceNumber
+                ? `Billed on ${invoiceNumber}`
+                : "Not invoiced yet · A4 tax invoice"}
+          </p>
+        </div>
+        {invoiceNumber ? (
+          <Link
+            href={`/invoices/${invoiceNumber}`}
+            className={buttonVariants({ variant: "default", size: "default" })}
+          >
+            <ReceiptIcon className="size-4" /> View Invoice
+          </Link>
+        ) : (
+          // ?challan= preselects this challan in the create flow.
+          <Link
+            href={`/invoices/new?challan=${encodeURIComponent(documentId)}`}
+            className={buttonVariants({ variant: "default", size: "default" })}
+          >
+            <FileTextIcon className="size-4" /> Create Invoice
+          </Link>
+        )}
+      </div>
     </div>
   );
 }

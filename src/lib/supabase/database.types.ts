@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           contact: string | null
           created_at: string
+          email: string | null
           gstin: string | null
           id: string
           is_active: boolean
@@ -32,6 +33,7 @@ export type Database = {
         Insert: {
           contact?: string | null
           created_at?: string
+          email?: string | null
           gstin?: string | null
           id?: string
           is_active?: boolean
@@ -46,6 +48,7 @@ export type Database = {
         Update: {
           contact?: string | null
           created_at?: string
+          email?: string | null
           gstin?: string | null
           id?: string
           is_active?: boolean
@@ -63,40 +66,61 @@ export type Database = {
         Row: {
           address_line1: string | null
           address_line2: string | null
+          bank_account_name: string | null
+          bank_account_number: string | null
+          bank_branch: string | null
+          bank_ifsc: string | null
           city: string | null
           company_name: string
           created_at: string
+          declaration: string | null
+          email: string | null
           gstin: string | null
           id: string
           pan: string | null
           pincode: string | null
           state: string | null
+          terms_and_conditions: string | null
           updated_at: string
         }
         Insert: {
           address_line1?: string | null
           address_line2?: string | null
+          bank_account_name?: string | null
+          bank_account_number?: string | null
+          bank_branch?: string | null
+          bank_ifsc?: string | null
           city?: string | null
           company_name?: string
           created_at?: string
+          declaration?: string | null
+          email?: string | null
           gstin?: string | null
           id?: string
           pan?: string | null
           pincode?: string | null
           state?: string | null
+          terms_and_conditions?: string | null
           updated_at?: string
         }
         Update: {
           address_line1?: string | null
           address_line2?: string | null
+          bank_account_name?: string | null
+          bank_account_number?: string | null
+          bank_branch?: string | null
+          bank_ifsc?: string | null
           city?: string | null
           company_name?: string
           created_at?: string
+          declaration?: string | null
+          email?: string | null
           gstin?: string | null
           id?: string
           pan?: string | null
           pincode?: string | null
           state?: string | null
+          terms_and_conditions?: string | null
           updated_at?: string
         }
         Relationships: []
@@ -137,11 +161,281 @@ export type Database = {
           },
         ]
       }
+      invoice_challans: {
+        Row: {
+          challan_id: string
+          created_at: string
+          id: string
+          invoice_id: string
+        }
+        Insert: {
+          challan_id: string
+          created_at?: string
+          id?: string
+          invoice_id: string
+        }
+        Update: {
+          challan_id?: string
+          created_at?: string
+          id?: string
+          invoice_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_challans_challan_id_fkey"
+            columns: ["challan_id"]
+            isOneToOne: false
+            referencedRelation: "receiving_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_challans_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoice_items: {
+        Row: {
+          component_id: string | null
+          created_at: string
+          gst_amount: number
+          gst_percent: number
+          hsn_code: string | null
+          id: string
+          invoice_id: string
+          item_name: string
+          item_remarks: string | null
+          line_no: number
+          line_total: number
+          line_type: Database["public"]["Enums"]["document_line_type"]
+          quantity: number
+          source_document_id: string
+          source_item_id: string | null
+          subtotal: number
+          unit: Database["public"]["Enums"]["unit_type"]
+          unit_price: number
+          updated_at: string
+        }
+        Insert: {
+          component_id?: string | null
+          created_at?: string
+          gst_amount?: number
+          gst_percent?: number
+          hsn_code?: string | null
+          id?: string
+          invoice_id: string
+          item_name: string
+          item_remarks?: string | null
+          line_no: number
+          line_total?: number
+          line_type: Database["public"]["Enums"]["document_line_type"]
+          quantity: number
+          source_document_id: string
+          source_item_id?: string | null
+          subtotal?: number
+          unit: Database["public"]["Enums"]["unit_type"]
+          unit_price: number
+          updated_at?: string
+        }
+        Update: {
+          component_id?: string | null
+          created_at?: string
+          gst_amount?: number
+          gst_percent?: number
+          hsn_code?: string | null
+          id?: string
+          invoice_id?: string
+          item_name?: string
+          item_remarks?: string | null
+          line_no?: number
+          line_total?: number
+          line_type?: Database["public"]["Enums"]["document_line_type"]
+          quantity?: number
+          source_document_id?: string
+          source_item_id?: string | null
+          subtotal?: number
+          unit?: Database["public"]["Enums"]["unit_type"]
+          unit_price?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_items_component_id_fkey"
+            columns: ["component_id"]
+            isOneToOne: false
+            referencedRelation: "materials"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_items_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_items_source_document_id_fkey"
+            columns: ["source_document_id"]
+            isOneToOne: false
+            referencedRelation: "receiving_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoice_items_source_item_id_fkey"
+            columns: ["source_item_id"]
+            isOneToOne: false
+            referencedRelation: "receiving_document_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      invoices: {
+        Row: {
+          bank_account_name: string | null
+          bank_account_number: string | null
+          bank_branch: string | null
+          bank_ifsc: string | null
+          cgst_total: number
+          company_id: string
+          created_at: string
+          created_by: string | null
+          customer_ref_date: string | null
+          customer_ref_no: string | null
+          declaration: string | null
+          gst_total: number
+          id: string
+          invoice_date: string
+          invoice_number: string
+          notes: string | null
+          our_address: string | null
+          our_city: string | null
+          our_company_name: string | null
+          our_email: string | null
+          our_gstin: string | null
+          our_pan: string | null
+          our_pincode: string | null
+          our_state: string | null
+          party_company: string | null
+          party_contact: string | null
+          party_email: string | null
+          party_gstin: string | null
+          party_location: string | null
+          party_name: string | null
+          party_pincode: string | null
+          party_post: string | null
+          party_state: string | null
+          sgst_total: number
+          subtotal: number
+          terms_and_conditions: string | null
+          total_amount: number
+          updated_at: string
+        }
+        Insert: {
+          bank_account_name?: string | null
+          bank_account_number?: string | null
+          bank_branch?: string | null
+          bank_ifsc?: string | null
+          cgst_total?: number
+          company_id: string
+          created_at?: string
+          created_by?: string | null
+          customer_ref_date?: string | null
+          customer_ref_no?: string | null
+          declaration?: string | null
+          gst_total?: number
+          id?: string
+          invoice_date?: string
+          invoice_number: string
+          notes?: string | null
+          our_address?: string | null
+          our_city?: string | null
+          our_company_name?: string | null
+          our_email?: string | null
+          our_gstin?: string | null
+          our_pan?: string | null
+          our_pincode?: string | null
+          our_state?: string | null
+          party_company?: string | null
+          party_contact?: string | null
+          party_email?: string | null
+          party_gstin?: string | null
+          party_location?: string | null
+          party_name?: string | null
+          party_pincode?: string | null
+          party_post?: string | null
+          party_state?: string | null
+          sgst_total?: number
+          subtotal?: number
+          terms_and_conditions?: string | null
+          total_amount?: number
+          updated_at?: string
+        }
+        Update: {
+          bank_account_name?: string | null
+          bank_account_number?: string | null
+          bank_branch?: string | null
+          bank_ifsc?: string | null
+          cgst_total?: number
+          company_id?: string
+          created_at?: string
+          created_by?: string | null
+          customer_ref_date?: string | null
+          customer_ref_no?: string | null
+          declaration?: string | null
+          gst_total?: number
+          id?: string
+          invoice_date?: string
+          invoice_number?: string
+          notes?: string | null
+          our_address?: string | null
+          our_city?: string | null
+          our_company_name?: string | null
+          our_email?: string | null
+          our_gstin?: string | null
+          our_pan?: string | null
+          our_pincode?: string | null
+          our_state?: string | null
+          party_company?: string | null
+          party_contact?: string | null
+          party_email?: string | null
+          party_gstin?: string | null
+          party_location?: string | null
+          party_name?: string | null
+          party_pincode?: string | null
+          party_post?: string | null
+          party_state?: string | null
+          sgst_total?: number
+          subtotal?: number
+          terms_and_conditions?: string | null
+          total_amount?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoices_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       materials: {
         Row: {
           category: Database["public"]["Enums"]["component_category"] | null
           code: string | null
           created_at: string
+          default_price: number | null
           id: string
           is_active: boolean
           name: string
@@ -153,6 +447,7 @@ export type Database = {
           category?: Database["public"]["Enums"]["component_category"] | null
           code?: string | null
           created_at?: string
+          default_price?: number | null
           id?: string
           is_active?: boolean
           name: string
@@ -164,6 +459,7 @@ export type Database = {
           category?: Database["public"]["Enums"]["component_category"] | null
           code?: string | null
           created_at?: string
+          default_price?: number | null
           id?: string
           is_active?: boolean
           name?: string
@@ -527,13 +823,55 @@ export type Database = {
     }
     Functions: {
       can_upload_challan: { Args: never; Returns: boolean }
+      create_invoice: {
+        Args: {
+          p_challans: string[]
+          p_company_id: string
+          p_customer_ref_date?: string
+          p_customer_ref_no?: string
+          p_invoice_date: string
+          p_lines: Json
+          p_notes?: string
+          p_our: Json
+          p_party: Json
+        }
+        Returns: string
+      }
       current_role: {
         Args: never
         Returns: Database["public"]["Enums"]["app_role"]
       }
+      delete_invoice: { Args: { p_invoice_id: string }; Returns: undefined }
       generate_dc_number: { Args: { p_date: string }; Returns: string }
+      generate_invoice_number: { Args: { p_date: string }; Returns: string }
       generate_transaction_number: {
         Args: { p_type: Database["public"]["Enums"]["transaction_type"] }
+        Returns: string
+      }
+      invoice_line_calc: {
+        Args: {
+          p_gst_percent: number
+          p_quantity: number
+          p_unit_price: number
+        }
+        Returns: Json
+      }
+      invoice_recalc_totals: {
+        Args: { p_invoice_id: string }
+        Returns: undefined
+      }
+      invoice_validate_challans: {
+        Args: { p_challans: string[] }
+        Returns: undefined
+      }
+      update_invoice: {
+        Args: {
+          p_add_challans?: string[]
+          p_add_lines?: Json
+          p_invoice_id: string
+          p_kept_lines?: Json
+          p_remove_challans?: string[]
+        }
         Returns: string
       }
     }
