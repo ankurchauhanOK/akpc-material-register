@@ -83,10 +83,17 @@ export function InvoicePreview({ invoice }: { invoice: InvoiceDetail }) {
         </div>
       </div>
 
-      {/* On-screen A4 document */}
-      <div className="invoice-a4 my-8 w-full max-w-[210mm] border border-border bg-white p-10 shadow-sm">
-        {/* Header: GSTIN + Bill meta (left) | Tax Invoice (center) | E-mail (right) */}
-        <div className="grid grid-cols-3 gap-4">
+      {/* On-screen A4 document.
+          Phone (<640px, `xs:` screen-only): responsive viewer — the three-column
+          header and the two-column party row stack, both tables scroll inside
+          their own wrappers, the totals block goes full width. Print and
+          >=640px keep the approved A4 layout (the print stylesheet also forces
+          width/padding, so `xs:p-4` never reaches paper). */}
+      <div className="invoice-a4 my-8 flex w-full max-w-[210mm] flex-col border border-border bg-white p-10 shadow-sm xs:my-4 xs:p-4 sm:min-h-[297mm]">
+        {/* Header: GSTIN + Bill meta (left) | Tax Invoice (center) | E-mail (right).
+            Stacks on a phone so the title is not squeezed into a third of a
+            320px sheet. */}
+        <div className="grid grid-cols-3 gap-4 xs:grid-cols-1">
           <div>
             <p className="text-xs text-zinc-500">GSTIN</p>
             <p className="text-sm font-semibold text-zinc-900">{view.ourGstin}</p>
@@ -102,11 +109,11 @@ export function InvoicePreview({ invoice }: { invoice: InvoiceDetail }) {
             </dl>
           </div>
           <div className="text-center">
-            <h2 className="text-2xl font-bold uppercase tracking-tight text-zinc-900">
+            <h2 className="break-words text-2xl font-bold uppercase tracking-tight text-zinc-900">
               {view.documentTitle}
             </h2>
           </div>
-          <div className="text-right">
+          <div className="text-right xs:text-left">
             <p className="text-xs text-zinc-500">E-mail</p>
             <p className="text-sm text-zinc-900">{view.ourEmail ?? "—"}</p>
           </div>
@@ -114,7 +121,7 @@ export function InvoicePreview({ invoice }: { invoice: InvoiceDetail }) {
 
         {/* Company bar */}
         <div className="mt-4 border-y border-zinc-300 py-3 text-center">
-          <h3 className="text-xl font-bold uppercase tracking-tight text-zinc-900">
+          <h3 className="break-words text-xl font-bold uppercase tracking-tight text-zinc-900">
             {view.brandName}
           </h3>
           {view.brandAddress ? (
@@ -122,83 +129,89 @@ export function InvoicePreview({ invoice }: { invoice: InvoiceDetail }) {
           ) : null}
         </div>
 
-        {/* Billed To + Delivery Address — two blocks, one customer */}
-        <div className="mt-4 grid grid-cols-2 gap-3">
+        {/* Billed To + Delivery Address — two blocks, one customer.
+            Stacked on a phone: two 130px columns are unreadable. */}
+        <div className="mt-4 grid grid-cols-2 gap-3 xs:grid-cols-1">
           <PartyBlock block={view.billedTo} />
           <PartyBlock block={view.deliveryTo} />
         </div>
 
-        {/* Item table */}
-        <table className="mt-5 w-full border-collapse border border-zinc-400 text-sm">
-          <thead>
-            <tr className="border border-zinc-400 bg-zinc-100 text-left text-[11px] uppercase tracking-wider text-zinc-600">
-              <th className="w-[30px] border border-zinc-400 px-2 py-2 text-center font-semibold">
-                Sl. No.
-              </th>
-              <th className="border border-zinc-400 px-2 py-2 font-semibold">
-                Description of Goods or Service
-              </th>
-              <th className="w-[62px] border border-zinc-400 px-2 py-2 font-semibold">
-                HSN
-              </th>
-              <th className="w-[48px] border border-zinc-400 px-2 py-2 font-semibold">
-                Unit
-              </th>
-              <th className="w-[68px] border border-zinc-400 px-2 py-2 text-right font-semibold">
-                Qty
-              </th>
-              <th className="w-[68px] border border-zinc-400 px-2 py-2 text-right font-semibold">
-                Rate
-              </th>
-              <th className="w-[77px] border border-zinc-400 px-2 py-2 text-right font-semibold">
-                Amount
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {view.rows.map((row) => (
-              <tr key={row.sno} className="border border-zinc-400">
-                <td className="border border-zinc-400 px-2 py-1.5 text-center text-zinc-600">
-                  {row.sno}
-                </td>
-                <td className="border border-zinc-400 px-2 py-1.5 text-zinc-900">
-                  {row.description}
-                </td>
-                <td className="border border-zinc-400 px-2 py-1.5 text-zinc-600">
-                  {row.hsn}
-                </td>
-                <td className="border border-zinc-400 px-2 py-1.5 text-zinc-600">
-                  {row.unit}
-                </td>
-                <td className="border border-zinc-400 px-2 py-1.5 text-right">
-                  {row.qty}
-                </td>
-                <td className="border border-zinc-400 px-2 py-1.5 text-right">
-                  {row.rate}
-                </td>
-                <td className="border border-zinc-400 px-2 py-1.5 text-right font-medium">
-                  {row.amount}
-                </td>
+        {/* Item table. Seven columns cannot fit a phone, so on `xs:` the TABLE
+            scrolls inside this wrapper — the document/page never scrolls.
+            >=640px and print keep the full-width A4 table. */}
+        <div className="mt-5 xs:overflow-x-auto">
+          <table className="w-full border-collapse border border-zinc-400 text-sm xs:min-w-[560px]">
+            <thead>
+              <tr className="border border-zinc-400 bg-zinc-100 text-left text-[11px] uppercase tracking-wider text-zinc-600">
+                <th className="w-[30px] border border-zinc-400 px-2 py-2 text-center font-semibold">
+                  Sl. No.
+                </th>
+                <th className="border border-zinc-400 px-2 py-2 font-semibold">
+                  Description of Goods or Service
+                </th>
+                <th className="w-[62px] border border-zinc-400 px-2 py-2 font-semibold">
+                  HSN
+                </th>
+                <th className="w-[48px] border border-zinc-400 px-2 py-2 font-semibold">
+                  Unit
+                </th>
+                <th className="w-[68px] border border-zinc-400 px-2 py-2 text-right font-semibold">
+                  Qty
+                </th>
+                <th className="w-[68px] border border-zinc-400 px-2 py-2 text-right font-semibold">
+                  Rate
+                </th>
+                <th className="w-[77px] border border-zinc-400 px-2 py-2 text-right font-semibold">
+                  Amount
+                </th>
               </tr>
-            ))}
-            {view.emptyRows > 0 &&
-              Array.from({ length: view.emptyRows }).map((_, i) => (
-                <tr key={`empty-${i}`} className="border border-zinc-400">
-                  <td className="h-6 border border-zinc-400" />
-                  <td className="border border-zinc-400" />
-                  <td className="border border-zinc-400" />
-                  <td className="border border-zinc-400" />
-                  <td className="border border-zinc-400" />
-                  <td className="border border-zinc-400" />
-                  <td className="border border-zinc-400" />
+            </thead>
+            <tbody>
+              {view.rows.map((row) => (
+                <tr key={row.sno} className="border border-zinc-400">
+                  <td className="border border-zinc-400 px-2 py-1.5 text-center text-zinc-600">
+                    {row.sno}
+                  </td>
+                  <td className="border border-zinc-400 px-2 py-1.5 text-zinc-900">
+                    {row.description}
+                  </td>
+                  <td className="border border-zinc-400 px-2 py-1.5 text-zinc-600">
+                    {row.hsn}
+                  </td>
+                  <td className="border border-zinc-400 px-2 py-1.5 text-zinc-600">
+                    {row.unit}
+                  </td>
+                  <td className="border border-zinc-400 px-2 py-1.5 text-right">
+                    {row.qty}
+                  </td>
+                  <td className="border border-zinc-400 px-2 py-1.5 text-right">
+                    {row.rate}
+                  </td>
+                  <td className="border border-zinc-400 px-2 py-1.5 text-right font-medium">
+                    {row.amount}
+                  </td>
                 </tr>
               ))}
-          </tbody>
-        </table>
+              {view.emptyRows > 0 &&
+                Array.from({ length: view.emptyRows }).map((_, i) => (
+                  <tr key={`empty-${i}`} className="border border-zinc-400">
+                    <td className="h-6 border border-zinc-400" />
+                    <td className="border border-zinc-400" />
+                    <td className="border border-zinc-400" />
+                    <td className="border border-zinc-400" />
+                    <td className="border border-zinc-400" />
+                    <td className="border border-zinc-400" />
+                    <td className="border border-zinc-400" />
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
 
-        {/* Totals */}
+        {/* Totals. The fixed 280pt column is wider than a 320px sheet, so `xs:`
+            makes it full width instead of overflowing. */}
         <div className="mt-3 flex justify-end">
-          <div className="w-[280px] space-y-1 text-sm">
+          <div className="w-[280px] space-y-1 text-sm xs:w-full">
             <TotalRow label="Subtotal" value={view.subtotal} />
             <TotalRow label="CGST" value={view.cgst} />
             <TotalRow label="SGST" value={view.sgst} />
@@ -226,98 +239,111 @@ export function InvoicePreview({ invoice }: { invoice: InvoiceDetail }) {
           <h4 className="mb-1 text-xs font-semibold uppercase tracking-wider text-zinc-600">
             Tax Summary
           </h4>
-          <table className="w-full border-collapse border border-zinc-400 text-[11px]">
-            <thead>
-              <tr className="border border-zinc-400 bg-zinc-100 text-zinc-600">
-                <th className="border border-zinc-400 px-1.5 py-1 text-left font-semibold">
-                  HSN/SAC
-                </th>
-                <th className="border border-zinc-400 px-1.5 py-1 text-right font-semibold">
-                  Taxable Value
-                </th>
-                <th
-                  className="border border-zinc-400 px-1.5 py-1 text-center font-semibold"
-                  colSpan={2}
-                >
-                  Central Tax
-                </th>
-                <th
-                  className="border border-zinc-400 px-1.5 py-1 text-center font-semibold"
-                  colSpan={2}
-                >
-                  State Tax
-                </th>
-                <th className="border border-zinc-400 px-1.5 py-1 text-right font-semibold">
-                  Total Tax
-                </th>
-              </tr>
-              <tr className="border border-zinc-400 bg-zinc-50 text-zinc-500">
-                <th className="border border-zinc-400" />
-                <th className="border border-zinc-400" />
-                <th className="border border-zinc-400 px-1.5 py-0.5 text-right font-medium">
-                  Rate
-                </th>
-                <th className="border border-zinc-400 px-1.5 py-0.5 text-right font-medium">
-                  Amount
-                </th>
-                <th className="border border-zinc-400 px-1.5 py-0.5 text-right font-medium">
-                  Rate
-                </th>
-                <th className="border border-zinc-400 px-1.5 py-0.5 text-right font-medium">
-                  Amount
-                </th>
-                <th className="border border-zinc-400" />
-              </tr>
-            </thead>
-            <tbody>
-              {view.hsnRows.map((r) => (
-                <tr key={r.key} className="border border-zinc-400">
-                  <td className="border border-zinc-400 px-1.5 py-1">{r.hsn}</td>
+          {/* Seven columns, so it needs the same `xs:` scroll-in-wrapper
+              treatment as the item table. */}
+          <div className="xs:overflow-x-auto">
+            <table className="w-full border-collapse border border-zinc-400 text-[11px] xs:min-w-[440px]">
+              <thead>
+                <tr className="border border-zinc-400 bg-zinc-100 text-zinc-600">
+                  <th className="border border-zinc-400 px-1.5 py-1 text-left font-semibold">
+                    HSN/SAC
+                  </th>
+                  <th className="border border-zinc-400 px-1.5 py-1 text-right font-semibold">
+                    Taxable Value
+                  </th>
+                  <th
+                    className="border border-zinc-400 px-1.5 py-1 text-center font-semibold"
+                    colSpan={2}
+                  >
+                    Central Tax
+                  </th>
+                  <th
+                    className="border border-zinc-400 px-1.5 py-1 text-center font-semibold"
+                    colSpan={2}
+                  >
+                    State Tax
+                  </th>
+                  <th className="border border-zinc-400 px-1.5 py-1 text-right font-semibold">
+                    Total Tax
+                  </th>
+                </tr>
+                <tr className="border border-zinc-400 bg-zinc-50 text-zinc-500">
+                  <th className="border border-zinc-400" />
+                  <th className="border border-zinc-400" />
+                  <th className="border border-zinc-400 px-1.5 py-0.5 text-right font-medium">
+                    Rate
+                  </th>
+                  <th className="border border-zinc-400 px-1.5 py-0.5 text-right font-medium">
+                    Amount
+                  </th>
+                  <th className="border border-zinc-400 px-1.5 py-0.5 text-right font-medium">
+                    Rate
+                  </th>
+                  <th className="border border-zinc-400 px-1.5 py-0.5 text-right font-medium">
+                    Amount
+                  </th>
+                  <th className="border border-zinc-400" />
+                </tr>
+              </thead>
+              <tbody>
+                {view.hsnRows.map((r) => (
+                  <tr key={r.key} className="border border-zinc-400">
+                    <td className="border border-zinc-400 px-1.5 py-1">{r.hsn}</td>
+                    <td className="border border-zinc-400 px-1.5 py-1 text-right">
+                      {r.taxableValue}
+                    </td>
+                    <td className="border border-zinc-400 px-1.5 py-1 text-right">
+                      {r.cgstRate}
+                    </td>
+                    <td className="border border-zinc-400 px-1.5 py-1 text-right">
+                      {r.cgstAmount}
+                    </td>
+                    <td className="border border-zinc-400 px-1.5 py-1 text-right">
+                      {r.sgstRate}
+                    </td>
+                    <td className="border border-zinc-400 px-1.5 py-1 text-right">
+                      {r.sgstAmount}
+                    </td>
+                    <td className="border border-zinc-400 px-1.5 py-1 text-right font-medium">
+                      {r.totalTax}
+                    </td>
+                  </tr>
+                ))}
+                <tr className="border border-zinc-400 font-semibold">
                   <td className="border border-zinc-400 px-1.5 py-1 text-right">
-                    {r.taxableValue}
+                    Total
                   </td>
                   <td className="border border-zinc-400 px-1.5 py-1 text-right">
-                    {r.cgstRate}
+                    {view.hsnTotals.taxableValue}
+                  </td>
+                  <td className="border border-zinc-400" />
+                  <td className="border border-zinc-400 px-1.5 py-1 text-right">
+                    {view.hsnTotals.cgstAmount}
+                  </td>
+                  <td className="border border-zinc-400" />
+                  <td className="border border-zinc-400 px-1.5 py-1 text-right">
+                    {view.hsnTotals.sgstAmount}
                   </td>
                   <td className="border border-zinc-400 px-1.5 py-1 text-right">
-                    {r.cgstAmount}
-                  </td>
-                  <td className="border border-zinc-400 px-1.5 py-1 text-right">
-                    {r.sgstRate}
-                  </td>
-                  <td className="border border-zinc-400 px-1.5 py-1 text-right">
-                    {r.sgstAmount}
-                  </td>
-                  <td className="border border-zinc-400 px-1.5 py-1 text-right font-medium">
-                    {r.totalTax}
+                    {view.hsnTotals.totalTax}
                   </td>
                 </tr>
-              ))}
-              <tr className="border border-zinc-400 font-semibold">
-                <td className="border border-zinc-400 px-1.5 py-1 text-right">
-                  Total
-                </td>
-                <td className="border border-zinc-400 px-1.5 py-1 text-right">
-                  {view.hsnTotals.taxableValue}
-                </td>
-                <td className="border border-zinc-400" />
-                <td className="border border-zinc-400 px-1.5 py-1 text-right">
-                  {view.hsnTotals.cgstAmount}
-                </td>
-                <td className="border border-zinc-400" />
-                <td className="border border-zinc-400 px-1.5 py-1 text-right">
-                  {view.hsnTotals.sgstAmount}
-                </td>
-                <td className="border border-zinc-400 px-1.5 py-1 text-right">
-                  {view.hsnTotals.totalTax}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        {/* Footer: terms + declaration (left) | bank + signature (right) */}
-        <div className="mt-6 grid grid-cols-2 gap-6 text-[11px]">
+        {/* Absorbs the slack so the footer (terms + declaration | bank +
+            signature) is anchored to the bottom of the A4 content box. Zero
+            basis: collapses if content grows, leaving `mt-6` below as the
+            minimum gap. Never overlaps. */}
+        <div className="flex-1" aria-hidden="true" />
+
+        {/* Footer: terms + declaration (left) | bank + signature (right).
+            Stacked on a phone: two ~120px columns of 11px text are unreadable.
+            The right column keeps `flex flex-col justify-between` at every
+            width — invoice-pdf.tsx mirrors that with `space-between`. */}
+        <div className="mt-6 grid grid-cols-2 gap-6 text-[11px] xs:grid-cols-1 xs:gap-4">
           <div>
             {view.terms.length > 0 ? (
               <>

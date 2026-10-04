@@ -34,6 +34,70 @@ replacing the paper receiving/giving register. **This is NOT an ERP.**
   `S.No | HSN/SAC | Description of Goods | MOQ/Qty | Unit | Remarks`
   (see `send-material-form.tsx`). Both the on-screen A4 (`challan-preview.tsx`)
   and PDF (`challan-pdf.tsx`) reproduce this layout with FROM/TO blocks.
+- **The A4 signature/footer block is bottom-anchored** on both documents, and
+  both renderers implement it the same way so they cannot drift: the page is a
+  vertical flex container of A4 height (`flex flex-col sm:min-h-[297mm]` in the
+  previews, `<Page size="A4">` in the PDFs) with a **zero-basis flexible spacer**
+  immediately before the footer (`<div className="flex-1" />` / a `flexGrow: 1,
+  flexShrink: 0, minHeight: 0` style). The spacer soaks up all the slack, so the
+  slack sits *between the item table and the signatures* and the signature row
+  lands on the bottom edge of the content box — the blank area is never closed
+  by stretching the table (the challan table is clamped to 8 rows by
+  `emptyRows`, so it cannot grow to absorb space). Never use absolute
+  positioning, negative margins or a giant `margin-top` to force this.
+  `flex-1`/`flexGrow` collapses to zero when the content is long, which is what
+  keeps it safe: the pre-existing `mt-12` / `mt-6` / `marginTop: 36` / `16`
+  become the *minimum* gap, so the footer can never overlap the content above
+  it. `p-10` on the previews is 40px = **30pt**, exactly
+  `CHALLAN_GEOMETRY.padding`, which is what makes the on-screen A4 and the
+  printed PDF line up to the point. Two traps: (1) `globals.css` groups
+  `.challan-a4` and `.invoice-a4` in a **shared** rule — never add
+  document-specific flex/height there or you will restyle the other document by
+  accident; (2) the invoice footer spans two columns (terms + declaration |
+  bank + signature), so its right column needs `justifyContent: "space-between"`
+  in `invoice-pdf.tsx` to match the preview's
+  `flex flex-col justify-between` — otherwise the PDF signature floats while
+  the preview signature sits on the row's bottom edge. It also carries
+  `wrap={false}` so a multi-page invoice moves the footer whole to the last page
+  instead of splitting it.
+- **Phone preview vs A4 print are two separate modes.** Below 640px the on-screen
+  A4 (`.challan-a4` / `.invoice-a4`) becomes a responsive document *viewer*; at
+  >=640px and in print it is the true A4. All phone-only styling uses the
+  screen-scoped custom variant **`xs:`** (`@custom-variant xs (@media screen and
+  (max-width: 639px))` in `src/app/globals.css`) — never a bare `max-sm:`, whose
+  media query is not type-scoped and could match while printing. Rules: (1) never
+  scale the sheet down with `transform: scale()` or negative margins, and never
+  change the *document* type scale in `xs:` — stacking, padding, scroll
+  containers and the one documented exception (the challan table's mobile column
+  sizing in the next bullet) are the only things that may differ on a phone; (2)
+  the print stylesheet already forces
+  `width: 210mm !important; padding: 12mm !important` on `.challan-a4` /
+  `.invoice-a4`, so `xs:p-4` and the stacked layout can never reach paper, and the
+  `*-pdf.tsx` renderers are untouched by any of it (they are separate markup and
+  share only the view model); (3) a table wider than the sheet scrolls **inside
+  its own `xs:overflow-x-auto` wrapper** with an `xs:min-w-[…]` floor — the
+  document and the page must never scroll horizontally; (4) the `flex-1` slack
+  spacer + `sm:min-h-[297mm]` combination is desktop/print only, so on a phone
+  the sheet is content-height and `mt-12` / `mt-6` becomes the gap before the
+  signatures.
+- **The challan item table is a real 6-column table on a phone, not a scroll
+  box.** Below 640px it must fit the whole sheet at 320px, so it uses
+  `xs:table-fixed` plus explicit percentage widths on the `th`s
+  (7 / 13 / 29 / 14 / 11 / 26 = 100%: S.No. | HSN/SAC | Description | MOQ | Unit
+  | Remarks), with tighter `xs:px-*`/`xs:py-1` padding, `xs:text-[11px]` body,
+  `xs:text-[9px]` wrapped headers and `break-words` as an unbreakable-token
+  fallback only. **Never** put `xs:min-w-[…]` or `xs:overflow-x-auto` on it —
+  that reintroduces horizontal scrolling. `table-fixed` is what makes the
+  percentages authoritative (widths come from the first row) and stops a long
+  cell from widening the table, since the table width stays `w-full`. The base
+  `w-10` / `w-20` / `w-16` widths and `table-auto` still own >=640px and print, so
+  the A4 is unchanged. Known-and-accepted edge: at exactly 320px a 5+ digit MOQ
+  wraps onto two lines (fine at 360px+); do not "fix" it with `scale()`.
+- **Invoice tables DO scroll on a phone** — 7 columns (item table, HSN tax
+  summary) stay in an `xs:overflow-x-auto` wrapper with an `xs:min-w-[…]` floor,
+  and the totals block goes `xs:w-full` because its fixed 280pt column is wider
+  than a 320px sheet. Same rule as the challan: the scroll is confined to the
+  wrapper, never the page.
 - **Our company identity** lives in the single-row `company_settings` table
   (Settings → Company Profile, admin-only). It is **snapshotted** onto every
   document at creation time (`our_*` columns on `receiving_documents`) so old

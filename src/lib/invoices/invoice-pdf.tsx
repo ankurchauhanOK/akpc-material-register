@@ -342,6 +342,17 @@ const styles = StyleSheet.create({
   sTotal: { width: G.colSumTotal, textAlign: "right" as const },
 
   // ---- footer -----------------------------------------------------------
+  // Flexible spacer that absorbs the slack between the totals/HSN summary and
+  // the footer, anchoring the footer to the bottom of the last page's content
+  // box. Zero basis and no shrink, so it collapses to nothing when the invoice
+  // grows past one page: `footerRow.marginTop` below stays the minimum gap and
+  // the footer never overlaps the content above it. Mirrors the `flex-1`
+  // spacer in invoice-preview.tsx.
+  footerSpacer: {
+    flexGrow: 1,
+    flexShrink: 0,
+    minHeight: 0,
+  },
   footerRow: {
     flexDirection: "row",
     marginTop: 16,
@@ -350,10 +361,16 @@ const styles = StyleSheet.create({
     width: 290,
     flexShrink: 0,
   },
+  // `justifyContent: space-between` mirrors the on-screen preview's right
+  // column (`flex flex-col justify-between` in invoice-preview.tsx): bank
+  // details stay at the top, the signature block sits on the bottom edge of
+  // the row. `sigFor.marginTop` remains the minimum gap when the column is
+  // short, exactly as `mt-6` does in the preview.
   footerRight: {
     width: 249.28,
     flexShrink: 0,
     alignItems: "flex-end" as const,
+    justifyContent: "space-between" as const,
   },
   footTitle: {
     fontSize: G.fontTiny,
@@ -713,7 +730,8 @@ function InvoiceBody({ view }: { view: InvoiceView }) {
       <HsnSummary view={view} />
 
       {/* footer: terms + declaration | bank + signature */}
-      <View style={styles.footerRow}>
+      <View style={styles.footerSpacer} />
+      <View style={styles.footerRow} wrap={false}>
         <View style={styles.footerLeft}>
           {view.terms.length > 0 ? (
             <>

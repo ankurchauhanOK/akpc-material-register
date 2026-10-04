@@ -163,15 +163,23 @@ export function ChallanPreview({
         )}
       </div>
 
-      {/* On-screen A4 document */}
-      <div className="challan-a4 my-8 w-full max-w-[210mm] border border-border bg-white p-10 shadow-sm">
-        {/* Header: FROM (left) + DC metadata (right) */}
-        <div className="flex items-start justify-between gap-6">
+      {/* On-screen A4 document.
+          Phone (<640px, `xs:` screen-only): a responsive document viewer — the
+          fixed two-column header stacks and the item table scrolls inside its
+          own wrapper, so nothing overflows the viewport. Print and >=640px keep
+          the approved A4 layout untouched (the print stylesheet also forces
+          width/padding, so the `xs:p-4` never reaches paper). */}
+      <div className="challan-a4 my-8 flex w-full max-w-[210mm] flex-col border border-border bg-white p-10 shadow-sm xs:my-4 xs:p-4 sm:min-h-[297mm]">
+        {/* Header: FROM (left) + DC metadata (right).
+            `break-words` on the brand name is a no-op at every width that fits
+            (the desktop FROM column is 253pt wide and never wraps) and only
+            stops a long name from spilling over the metadata column. */}
+        <div className="flex items-start justify-between gap-6 xs:flex-col xs:items-stretch xs:gap-4">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
               From
             </p>
-            <h1 className="mt-1 text-xl font-bold uppercase tracking-tight text-zinc-900">
+            <h1 className="mt-1 break-words text-xl font-bold uppercase tracking-tight text-zinc-900">
               {fromName}
             </h1>
             <div className="mt-2 space-y-0.5 text-sm text-zinc-600">
@@ -180,15 +188,17 @@ export function ChallanPreview({
               ))}
             </div>
           </div>
-          <div className="shrink-0 text-right">
+          <div className="shrink-0 text-right xs:shrink xs:text-left">
             <p className="text-lg font-bold uppercase tracking-wide text-zinc-900">
               {view.documentTitle}
             </p>
-            <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] gap-x-6 gap-y-1 text-sm [&>*:nth-child(odd)]:text-zinc-500">
+            <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] gap-x-6 gap-y-1 text-sm xs:gap-x-3 [&>*:nth-child(odd)]:text-zinc-500">
               {view.meta.map((m) => (
                 <Fragment key={m.label}>
                   <span className="text-left">{m.label}</span>
-                  <span className={`text-right ${m.strong ? "font-semibold" : ""}`}>
+                  <span
+                    className={`break-words text-right ${m.strong ? "font-semibold" : ""}`}
+                  >
                     {m.value}
                   </span>
                 </Fragment>
@@ -216,38 +226,46 @@ export function ChallanPreview({
           </p>
         </div>
 
-        {/* Material table */}
-        <table className="mt-5 w-full border-collapse border border-zinc-400 text-sm">
+        {/* Material table.
+            Phone (`xs:`, screen-only): `table-fixed` + the percentage widths on
+            the `th`s make all 6 columns fit the sheet at 320px with NO
+            horizontal scrolling — the browser cannot auto-size them, and a cell
+            can never widen the table (the table width is `w-full`). Prose in
+            Description/Remarks wraps naturally; `break-words` is only a
+            fallback for an unbreakable token (a 5+ digit MOQ at exactly 320px).
+            >=640px and print fall back to `table-auto` with the original
+            `w-10` / `w-20` / `w-16` widths — the approved A4, unchanged. */}
+        <table className="mt-5 w-full border-collapse border border-zinc-400 text-sm xs:table-fixed xs:text-[11px] xs:leading-snug">
           <thead>
             <tr className="border border-zinc-400 bg-zinc-100 text-left text-xs uppercase tracking-wider text-zinc-600">
-              <th className="w-10 border border-zinc-400 px-2 py-2 text-center font-semibold">S. No.</th>
-              <th className="w-20 border border-zinc-400 px-2 py-2 font-semibold">HSN/SAC</th>
-              <th className="border border-zinc-400 px-2 py-2 font-semibold">Description of Goods</th>
-              <th className="w-20 border border-zinc-400 px-2 py-2 text-right font-semibold">MOQ</th>
-              <th className="w-16 border border-zinc-400 px-2 py-2 font-semibold">Unit</th>
-              <th className="border border-zinc-400 px-2 py-2 font-semibold">Remarks</th>
+              <th className="w-10 border border-zinc-400 px-2 py-2 text-center font-semibold xs:w-[7%] xs:px-1 xs:py-1 xs:text-[9px] xs:leading-tight">S. No.</th>
+              <th className="w-20 border border-zinc-400 px-2 py-2 font-semibold xs:w-[13%] xs:px-1 xs:py-1 xs:text-[9px] xs:leading-tight">HSN/SAC</th>
+              <th className="border border-zinc-400 px-2 py-2 font-semibold xs:w-[29%] xs:px-1 xs:py-1 xs:text-[9px] xs:leading-tight">Description of Goods</th>
+              <th className="w-20 border border-zinc-400 px-2 py-2 text-right font-semibold xs:w-[14%] xs:px-1 xs:py-1 xs:text-[9px] xs:leading-tight">MOQ</th>
+              <th className="w-16 border border-zinc-400 px-2 py-2 font-semibold xs:w-[11%] xs:px-1 xs:py-1 xs:text-[9px] xs:leading-tight">Unit</th>
+              <th className="border border-zinc-400 px-2 py-2 font-semibold xs:w-[26%] xs:px-1 xs:py-1 xs:text-[9px] xs:leading-tight">Remarks</th>
             </tr>
           </thead>
           <tbody>
             {view.rows.map((row, i) => (
               <tr key={i} className="border border-zinc-400">
-                <td className="border border-zinc-400 px-2 py-2 text-center text-zinc-600">{row.sno}</td>
-                <td className="border border-zinc-400 px-2 py-2 text-zinc-600">
+                <td className="border border-zinc-400 px-2 py-2 text-center text-zinc-600 xs:px-0.5 xs:py-1 xs:text-[10px]">{row.sno}</td>
+                <td className="break-words border border-zinc-400 px-2 py-2 text-zinc-600 xs:px-0.5 xs:py-1 xs:text-[10px]">
                   {row.hsn}
                 </td>
-                <td className="border border-zinc-400 px-2 py-2 text-zinc-900">
+                <td className="break-words border border-zinc-400 px-2 py-2 text-zinc-900 xs:px-1 xs:py-1">
                   <p className="font-medium">{row.description}</p>
                   {row.showPartCode && row.partCode ? (
-                    <p className="text-xs text-zinc-500">{row.partCode}</p>
+                    <p className="text-xs text-zinc-500 xs:text-[10px]">{row.partCode}</p>
                   ) : null}
                 </td>
-                <td className="border border-zinc-400 px-2 py-2 text-right">
+                <td className="break-words border border-zinc-400 px-2 py-2 text-right xs:px-0.5 xs:py-1 xs:text-[10px]">
                   {row.qty}
                 </td>
-                <td className="border border-zinc-400 px-2 py-2">
+                <td className="border border-zinc-400 px-2 py-2 xs:px-0.5 xs:py-1">
                   {row.unit}
                 </td>
-                <td className="border border-zinc-400 px-2 py-2 text-zinc-700">
+                <td className="break-words border border-zinc-400 px-2 py-2 text-zinc-700 xs:px-1 xs:py-1">
                   {row.remarks}
                 </td>
               </tr>
@@ -256,26 +274,33 @@ export function ChallanPreview({
             {view.emptyRows > 0 &&
               Array.from({ length: view.emptyRows }).map((_, i) => (
                 <tr key={`empty-${i}`} className="border border-zinc-400">
-                  <td className="h-7 border border-zinc-400 px-2 py-2" />
-                  <td className="border border-zinc-400 px-2 py-2" />
-                  <td className="border border-zinc-400 px-2 py-2" />
-                  <td className="border border-zinc-400 px-2 py-2" />
-                  <td className="border border-zinc-400 px-2 py-2" />
-                  <td className="border border-zinc-400 px-2 py-2" />
+                  <td className="h-7 border border-zinc-400 px-2 py-2 xs:px-0.5 xs:py-1" />
+                  <td className="border border-zinc-400 px-2 py-2 xs:px-0.5 xs:py-1" />
+                  <td className="border border-zinc-400 px-2 py-2 xs:px-1 xs:py-1" />
+                  <td className="border border-zinc-400 px-2 py-2 xs:px-0.5 xs:py-1" />
+                  <td className="border border-zinc-400 px-2 py-2 xs:px-0.5 xs:py-1" />
+                  <td className="border border-zinc-400 px-2 py-2 xs:px-1 xs:py-1" />
                 </tr>
               ))}
           </tbody>
         </table>
 
-        {/* Signature footer */}
-        <div className="mt-12 flex justify-between">
+        {/* Absorbs the slack so the signature row is anchored to the bottom of
+            the A4 content box. Zero basis: collapses if content grows, leaving
+            `mt-12` below as the minimum gap. Never overlaps. */}
+        <div className="flex-1" aria-hidden="true" />
+
+        {/* Signature footer. `w-1/2` + `w-1/3` + `justify-between` is the
+            approved A4 composition; on a phone the 1/3 column is too narrow for
+            "Receiver's Signature", so `xs:` gives both equal halves. */}
+        <div className="mt-12 flex justify-between xs:gap-4">
           <div className="flex w-1/2 flex-col items-center">
             <div className="mb-1 h-14 w-full border-b border-dashed border-zinc-400" />
             <span className="text-xs uppercase tracking-wider text-zinc-500">
               Prepared By
             </span>
           </div>
-          <div className="flex w-1/3 flex-col items-center">
+          <div className="flex w-1/3 flex-col items-center xs:w-1/2">
             <div className="mb-1 h-14 w-full border-b border-dashed border-zinc-400" />
             <span className="text-center text-xs uppercase tracking-wider text-zinc-500">
               Receiver&apos;s Signature

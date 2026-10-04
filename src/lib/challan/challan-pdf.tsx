@@ -197,6 +197,16 @@ const styles = StyleSheet.create({
     borderTopWidth: G.border,
     borderTopColor: G.colorTable,
   },
+  // Flexible spacer that absorbs the slack between the item table and the
+  // signature row, anchoring that row to the bottom of the A4 content box.
+  // Zero basis and no shrink, so it collapses to nothing if the content grows:
+  // `sigRow.marginTop` below stays the minimum gap and can never overlap.
+  // Mirrors the `flex-1` spacer in challan-preview.tsx.
+  sigSpacer: {
+    flexGrow: 1,
+    flexShrink: 0,
+    minHeight: 0,
+  },
   sigRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -391,6 +401,7 @@ function ChallanBody({ view }: { view: ChallanView }) {
       </View>
 
       {/* Signature footer */}
+      <View style={styles.sigSpacer} />
       <View style={styles.sigRow}>
         <View style={styles.sigBlockPrepared}>
           <View style={styles.sigLine} />

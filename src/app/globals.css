@@ -4,6 +4,13 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Phone-width breakpoint for the on-screen A4 previews (challan / invoice).
+   Deliberately `@media screen` scoped (NOT a plain `max-sm:`): print must keep
+   the true A4 layout, so a screen-only query is the structural guarantee that a
+   mobile fix can never leak into the printed document. `xs` = screen below
+   Tailwind's 640px `sm`. Desktop (< sm) styles stay the approved A4 design. */
+@custom-variant xs (@media screen and (max-width: 639px));
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
