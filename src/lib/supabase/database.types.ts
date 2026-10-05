@@ -212,7 +212,7 @@ export type Database = {
           line_total: number
           line_type: Database["public"]["Enums"]["document_line_type"]
           quantity: number
-          source_document_id: string
+          source_document_id: string | null
           source_item_id: string | null
           subtotal: number
           unit: Database["public"]["Enums"]["unit_type"]
@@ -233,7 +233,7 @@ export type Database = {
           line_total?: number
           line_type: Database["public"]["Enums"]["document_line_type"]
           quantity: number
-          source_document_id: string
+          source_document_id?: string | null
           source_item_id?: string | null
           subtotal?: number
           unit: Database["public"]["Enums"]["unit_type"]
@@ -254,7 +254,7 @@ export type Database = {
           line_total?: number
           line_type?: Database["public"]["Enums"]["document_line_type"]
           quantity?: number
-          source_document_id?: string
+          source_document_id?: string | null
           source_item_id?: string | null
           subtotal?: number
           unit?: Database["public"]["Enums"]["unit_type"]
@@ -309,6 +309,7 @@ export type Database = {
           id: string
           invoice_date: string
           invoice_number: string
+          invoice_type: string
           notes: string | null
           our_address: string | null
           our_city: string | null
@@ -349,6 +350,7 @@ export type Database = {
           id?: string
           invoice_date?: string
           invoice_number: string
+          invoice_type?: string
           notes?: string | null
           our_address?: string | null
           our_city?: string | null
@@ -389,6 +391,7 @@ export type Database = {
           id?: string
           invoice_date?: string
           invoice_number?: string
+          invoice_type?: string
           notes?: string | null
           our_address?: string | null
           our_city?: string | null
@@ -871,6 +874,7 @@ export type Database = {
           p_invoice_id: string
           p_kept_lines?: Json
           p_remove_challans?: string[]
+          p_remove_line_ids?: string[]
         }
         Returns: string
       }

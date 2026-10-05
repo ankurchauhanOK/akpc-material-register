@@ -92,12 +92,19 @@ export function InvoiceEditFlow({
     const out: DisplayRow[] = [];
     // existing lines (minus removed challans)
     for (const it of invoice.items) {
-      if (removedIds.has(it.source_document_id)) continue;
+      // A NULL source_document_id is a manual line, and manual lines only ever
+      // exist on a Direct Invoice -- which the detail page routes to
+      // DirectInvoiceEditFlow. Skipping is defensive: this wizard keys every
+      // row off `invoice.challans`, so a source-less row would look up its
+      // challan and render "—" with nothing to remove it by.
+      if (it.source_document_id == null) continue;
+      const sourceDocumentId = it.source_document_id;
+      if (removedIds.has(sourceDocumentId)) continue;
       const edit = edits[`item:${it.id}`];
       const rate = edit?.rate ?? it.unit_price;
       const gst = edit?.gst ?? it.gst_percent;
       const challan = invoice.challans.find(
-        (c) => c.challanId === it.source_document_id
+        (c) => c.challanId === sourceDocumentId
       );
       out.push({
         key: `item:${it.id}`,
@@ -110,7 +117,7 @@ export function InvoiceEditFlow({
         hsnCode: it.hsn_code,
         lineType: it.line_type,
         componentId: it.component_id,
-        sourceDocumentId: it.source_document_id,
+        sourceDocumentId,
         sourceItemId: it.source_item_id ?? "",
         rate,
         gst,
@@ -228,8 +235,13 @@ export function InvoiceEditFlow({
     submittingRef.current = true;
     setSaving(true);
     try {
+      // Manual lines (source_document_id IS NULL) belong to a Direct Invoice
+      // and are handled by DirectInvoiceEditFlow, so this wizard only ever
+      // sends challan-backed rows.
       const keptLines = invoice.items
-        .filter((it) => !removedIds.has(it.source_document_id))
+        .filter(
+          (it) => it.source_document_id != null && !removedIds.has(it.source_document_id)
+        )
         .map((it) => {
           const edit = edits[`item:${it.id}`];
           return {
@@ -268,6 +280,8 @@ export function InvoiceEditFlow({
         removeChallans: [...removedIds],
         addChallans: addedChallans.map((c) => c.id),
         addLines,
+        // Direct-invoice only; a challan invoice removes its lines by challan.
+        removeLineIds: [],
         keptLines,
       });
 

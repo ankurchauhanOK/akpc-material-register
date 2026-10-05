@@ -113,6 +113,58 @@ replacing the paper receiving/giving register. **This is NOT an ERP.**
   Numbers are `INV/YYYY-YY/NNN`, generated in the DB like REC/GIV; the client
   never derives one. Lines carry their own rate/GST (`invoice_items`), unlike
   the challan, which stores none.
+  - **There are two invoice modes, and they are mutually exclusive.**
+    `invoices.invoice_type` is `text` (`challan` | `direct`) — a CHECK column,
+    **not** an enum, because the mode is a stable two-value label rather than
+    domain data. It defaults to `'challan'` and is backfilled as `'direct'` for
+    any invoice with zero `invoice_challans` rows.
+    - `challan` — the original flow: bills a Send challan whole, lines keep the
+      challan's description/qty/HSN as a snapshot, and the user edits **only
+      rate and GST**.
+    - `direct` — a standalone invoice with **no challan at all**: `items →
+      Description/HSN/Unit/MOQ/Remark`, `rate`, `GST%`, added as manual lines.
+      **There is no Component Master link and no fake challan row** — a direct
+      invoice that silently faked one would show a Delivery Challan number on a
+      legal tax invoice that does not exist.
+    - The invariants are enforced in the RPCs, not the UI: a direct invoice
+      cannot gain a challan, a challan invoice cannot gain a manual line or use
+      per-line removal, a direct invoice cannot lose its last item, and a
+      challan invoice cannot lose its last challan. Never "helpfully" relax one
+      of these in the client — the guard belongs in SQL.
+  - **Direct vs challan is decided by `array_length(p_challans, 1) = 0`, so the
+    client sends `challans: []`, never `null`.** `array_length('{}', 1)` is
+    `NULL`, not `0`, and `NULL = 0` is `NULL` — a naive `p_challans is null` or
+    `array_length(...) = 0` check silently misclassifies an empty array. Always
+    wrap it: `coalesce(array_length(x, 1), 0)`. Same trap in `update_invoice`,
+    where `p_remove_challans`/`p_add_challans`/`p_remove_line_ids` arrive as
+    NULL from a client that omits them.
+  - **A direct line's `source_document_id` and `source_item_id` are NULL**, which
+    is why `invoice_items.source_document_id` dropped its `NOT NULL`. This is
+    the flag a source-less line is identified by, so any query that walks
+    `source_document_id` (`ChallansBlock`, the challan edit flow, the list
+    joins) must be null-safe. A direct line is rejected at write time if either
+    column is non-null — the check is `(v_line ->> 'source_document_id') is not
+    null or (v_line ->> 'source_item_id') is not null`, never a `<>` comparison,
+    because `NULL <> x` is NULL and would let the row through.
+  - **The editable field set differs by mode, inside `update_invoice`'s kept-line
+    loop.** A direct line may rewrite name/HSN/unit/remarks/qty; a challan line
+    may only move `unit_price` and `gst_percent` (the rest stay the challan's
+    snapshot). Consequently the money calc must use the **effective** quantity —
+    read the stored value back for a challan line — not the quantity that
+    arrived on the wire, or the client bills for a number the printed document
+    does not show.
+  - **`update_invoice` grew a 6th parameter `p_remove_line_ids`** (the only way to
+    drop a manual line). The old 5-argument function was **dropped**, because
+    PostgREST cannot disambiguate an overloaded function by named arguments and
+    the call would fail at runtime. If you ever change that signature again:
+    drop the old overload in the same migration and **re-issue the `grant
+    execute ... to authenticated`**, which is lost with the function.
+  - **Direct invoices are swept by company deletion.** `invoices.company_id` is
+    `NOT NULL references companies(id)` with no `ON DELETE`, so a direct invoice
+    with zero challans was invisible to the old challan-driven sweep and would
+    have made the company undeletable. `sweepInvoicesForCompany()` in
+    `deleteMasters.ts` now sweeps **every** invoice for a company before the
+    company row goes, and `getCompanyUsageBreakdown()` counts them too.
   - **All invoice writes go through the security-definer RPCs** `create_invoice`,
     `update_invoice`, `delete_invoice`. The invoice RLS policies are
     `with check (false)` / `using (false)` **on purpose** so a client cannot
@@ -163,6 +215,18 @@ replacing the paper receiving/giving register. **This is NOT an ERP.**
     per invoice (an invoice that bills several components is removed whole).
     The count is disclosed to the admin first via `MasterUsageBreakdown.invoices`
     (distinct invoices, not link rows).
+  - **SQL-level regression test:** `supabase/tests/direct_invoice_smoke.sql` is
+    the executable spec for both modes. It fakes an admin JWT via
+    `set_config('request.jwt.claims', …, true)` (transaction-scoped, reverted by
+    its own `ROLLBACK`), builds a party + Send challan fixture, then asserts 12
+    invariants: direct create with `challans: []` yields zero links and null
+    sources; a smuggled source id is rejected; direct edit can change *every*
+    field and add/remove a manual line; a direct invoice refuses a challan and
+    refuses to be emptied; a challan invoice still gets `invoice_type='challan'`,
+    still cannot be double-billed, and its lines still ignore a submitted
+    quantity/description (the case that caught the effective-quantity bug).
+    Run it in the SQL Editor *after* the migration — invoice numbers are burned
+    even though the rows roll back, so never point it at production.
 - RLS enabled on all tables; role-based policies (`admin` / `operator` / `viewer`).
   Never expose the service-role key in frontend code.
 - Challans go to the private `challans` storage bucket; served via signed URLs.

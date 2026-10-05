@@ -27,6 +27,7 @@ import { deleteInvoiceApi } from "@/lib/invoices/invoiceApi";
 import { formatDate, formatINR } from "@/lib/format";
 import { UNIT_LABELS } from "@/lib/supabase/types";
 import { InvoiceEditFlow } from "@/components/invoices/invoice-edit-flow";
+import { DirectInvoiceEditFlow } from "@/components/invoices/direct-invoice-edit";
 import type { InvoiceDetail } from "@/lib/invoices/types";
 
 export function InvoiceDetailPage({ invoiceNumber }: { invoiceNumber: string }) {
@@ -39,20 +40,34 @@ export function InvoiceDetailPage({ invoiceNumber }: { invoiceNumber: string }) 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Routed by invoice_type, NOT by "has no challans": a challan invoice that
+  // lost its last challan cannot happen (update_invoice forbids it), and
+  // guessing would mean loading the wrong editor for a direct invoice.
+  const isDirect = invoice?.invoice_type === "direct";
+
   if (editing && invoice) {
+    const afterSave = () => {
+      queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      queryClient.invalidateQueries({
+        queryKey: ["invoices", "detail", invoiceNumber],
+      });
+      setEditing(false);
+    };
     return (
       <div className="mx-auto max-w-5xl">
-        <InvoiceEditFlow
-          invoice={invoice}
-          onCancel={() => setEditing(false)}
-          onSaved={() => {
-            queryClient.invalidateQueries({ queryKey: ["invoices"] });
-            queryClient.invalidateQueries({
-              queryKey: ["invoices", "detail", invoiceNumber],
-            });
-            setEditing(false);
-          }}
-        />
+        {isDirect ? (
+          <DirectInvoiceEditFlow
+            invoice={invoice}
+            onCancel={() => setEditing(false)}
+            onSaved={afterSave}
+          />
+        ) : (
+          <InvoiceEditFlow
+            invoice={invoice}
+            onCancel={() => setEditing(false)}
+            onSaved={afterSave}
+          />
+        )}
       </div>
     );
   }
@@ -63,7 +78,13 @@ export function InvoiceDetailPage({ invoiceNumber }: { invoiceNumber: string }) 
     try {
       await deleteInvoiceApi(invoice.id);
       queryClient.invalidateQueries({ queryKey: ["invoices"] });
-      toast.success("Invoice deleted. Its challans are available again.");
+      // A direct invoice never held a challan hostage, so claiming otherwise
+      // here would be wrong copy.
+      toast.success(
+        invoice.invoice_type === "direct"
+          ? "Invoice deleted."
+          : "Invoice deleted. Its challans are available again."
+      );
       router.replace("/invoices");
     } catch (e) {
       // Surface the real reason, as the create/edit flows already do. A generic
@@ -212,8 +233,26 @@ export function InvoiceDetailPage({ invoiceNumber }: { invoiceNumber: string }) 
             </div>
           )}
 
-          {/* Challans */}
-          <ChallansBlock invoice={invoice} />
+          {/* Challans — only meaningful for a challan-backed invoice. A Direct
+              Invoice would render an empty "Delivery Challans" panel, which
+              reads like something is missing rather than by design. */}
+          {invoice.invoice_type !== "direct" && (
+            <ChallansBlock invoice={invoice} />
+          )}
+
+          {invoice.invoice_type === "direct" && (
+            <div className="mb-4 rounded-xl border bg-white p-4">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-semibold">Direct Invoice</h2>
+                <Badge variant="secondary">No Delivery Challan</Badge>
+              </div>
+              <p className="mt-1 text-xs text-zinc-500">
+                The items below were typed in by hand. Nothing is billed against
+                a Delivery Challan, so no challan is marked as invoiced by this
+                document.
+              </p>
+            </div>
+          )}
 
           {/* Items */}
           <div className="mb-4 overflow-hidden rounded-xl border bg-white">
@@ -304,8 +343,13 @@ export function InvoiceDetailPage({ invoiceNumber }: { invoiceNumber: string }) 
           <DialogTitle>Delete this invoice permanently?</DialogTitle>
           <DialogDescription>
             {invoice &&
-              `Invoice ${invoice.invoice_number} will be deleted permanently. Its Delivery
-              Challans become available for billing again. The invoice number is never reused.`}
+              (invoice.invoice_type === "direct"
+                ? `Invoice ${invoice.invoice_number} will be deleted permanently. It has no
+              Delivery Challan linked, so no challan is affected. The invoice number
+              is never reused.`
+                : `Invoice ${invoice.invoice_number} will be deleted permanently. Its Delivery
+              Challans become available for billing again. The invoice number is never
+              reused.`)}
           </DialogDescription>
           <DialogFooter>
             <Button
@@ -332,8 +376,13 @@ export function InvoiceDetailPage({ invoiceNumber }: { invoiceNumber: string }) 
 }
 
 function ChallansBlock({ invoice }: { invoice: InvoiceDetail }) {
+  // Keyed by source_document_id, which is only non-null for challan-backed
+  // items -- this block is not rendered for a Direct Invoice at all. The null
+  // guard is kept so a manual line could never silently merge into a
+  // "null" bucket if that ever changed.
   const counts = new Map<string, number>();
   for (const it of invoice.items) {
+    if (it.source_document_id == null) continue;
     counts.set(
       it.source_document_id,
       (counts.get(it.source_document_id) ?? 0) + 1

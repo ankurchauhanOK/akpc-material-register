@@ -48,8 +48,9 @@ export function InvoicesListPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Invoices</h1>
           <p className="mt-1 text-sm text-zinc-500">
-            Billing records raised against your Delivery Challans. Each challan
-            can be billed on only one invoice.
+            Billing records raised against your Delivery Challans, plus direct
+            invoices raised by hand. Each challan can be billed on only one
+            invoice.
           </p>
         </div>
         <Link
@@ -96,7 +97,7 @@ export function InvoicesListPage() {
                 <TableRow>
                   <TableHead>Invoice</TableHead>
                   <TableHead>Party</TableHead>
-                  <TableHead>Challans</TableHead>
+                  <TableHead>Source</TableHead>
                   <TableHead>Items</TableHead>
                   <TableHead className="text-right">Amount</TableHead>
                   <TableHead>Date</TableHead>
@@ -132,7 +133,13 @@ function InvoiceRow({ invoice }: { invoice: InvoiceListItem }) {
         </Link>
       </TableCell>
       <TableCell>{invoice.party_name ?? invoice.party_company ?? "—"}</TableCell>
-      <TableCell>{invoice.challanCount}</TableCell>
+      <TableCell>
+        {invoice.invoice_type === "direct" ? (
+          <Badge variant="secondary">Direct</Badge>
+        ) : (
+          invoice.challanCount
+        )}
+      </TableCell>
       <TableCell>{invoice.itemCount}</TableCell>
       <TableCell className="whitespace-nowrap text-right font-medium">
         {formatINR(invoice.total_amount)}
@@ -162,15 +169,20 @@ function MobileInvoiceCard({ invoice }: { invoice: InvoiceListItem }) {
         <p className="truncate text-sm font-semibold">
           {invoice.invoice_number}
         </p>
-        <Badge variant="secondary">INV</Badge>
+        <Badge variant="secondary">
+          {invoice.invoice_type === "direct" ? "DIRECT" : "INV"}
+        </Badge>
       </div>
       <p className="mt-1 truncate text-sm font-medium">
         {invoice.party_name ?? invoice.party_company ?? "—"}
       </p>
       <div className="mt-2 flex items-center justify-between gap-2 border-t border-border pt-2">
         <p className="truncate text-xs text-zinc-500">
-          {invoice.challanCount}{" "}
-          {invoice.challanCount === 1 ? "challan" : "challans"} ·{" "}
+          {invoice.invoice_type === "direct"
+            ? "Direct invoice · "
+            : `${invoice.challanCount} ${
+                invoice.challanCount === 1 ? "challan" : "challans"
+              } · `}
           {invoice.itemCount} {invoice.itemCount === 1 ? "item" : "items"} ·{" "}
           {formatDate(invoice.invoice_date)}
         </p>

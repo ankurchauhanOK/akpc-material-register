@@ -4,6 +4,7 @@ import { formatQty, UNIT_SHORT } from "@/lib/challan/challan-view";
 import type {
   CandidateLine,
   EligibleChallan,
+  Enums,
   InvoiceDetail,
   InvoiceLinePayload,
   InvoiceListItem,
@@ -21,6 +22,13 @@ export type CreateInvoiceInput = {
   notes?: string | null;
   customerRefNo?: string | null;
   customerRefDate?: string | null;
+  /** Delivery Challan ids this invoice bills.
+   *  - challan-backed: 1+ ids, every line carries a matching source.
+   *  - Direct Invoice:  EMPTY (or null) and every line has a null source.
+   *
+   *  The RPC reads "empty" as `coalesce(array_length(p_challans,1),0) = 0`, so
+   *  an absent array and an empty one are the same request. We always send an
+   *  array (possibly empty) so the PostgREST arg is never a missing key. */
   challans: string[];
   lines: InvoiceLinePayload[];
 };
@@ -31,6 +39,9 @@ export type CreateInvoiceInput = {
  * one-invoice-per-challan rule, snapshots OUR/PARTY identity, assigns the
  * INV/YYYY-YY/NNN number, and computes server-authoritative totals.
  * Returns the assigned invoice number (used for the redirect).
+ *
+ * Direct Invoices go through the SAME call with `challans: []` — one RPC, one
+ * atomic write, so there is no second persistence path to keep in sync.
  */
 export async function createInvoiceApi(
   input: CreateInvoiceInput
@@ -64,17 +75,32 @@ export type UpdateInvoiceInput = {
   addLines: InvoiceLinePayload[];
   /** Existing invoice lines whose rate/GST the user edited in this session. */
   keptLines: KeptLineEdit[];
+  /** invoice_items.id values to delete. DIRECT INVOICES ONLY — a manual line
+   *  has no challan, so this is the only way to remove one. The RPC rejects it
+   *  on a challan-backed invoice (those lines go with their challan). */
+  removeLineIds: string[];
 };
 
 export type KeptLineEdit = {
   id: string; // invoice_items.id
-  source_document_id: string;
+  /** null on a Direct Invoice's manual lines. */
+  source_document_id: string | null;
   quantity: number;
   unit_price: number;
   gst_percent: number;
+  /** Direct Invoice only — the RPC ignores these on a challan-backed invoice,
+   *  where qty / description / HSN stay the challan's snapshot. */
+  item_name?: string;
+  hsn_code?: string | null;
+  item_remarks?: string | null;
+  unit?: Enums<"unit_type">;
 };
 
-/** Atomic edit — add/remove challans, edit rates. Returns the invoice id. */
+/** Atomic edit — add/remove challans, edit rates. Returns the invoice id.
+ *
+ *  Direct Invoices use the same RPC with removeChallans / addChallans empty
+ *  and removeLineIds populated. The RPC branches on the stored
+ *  `invoices.invoice_type`, so the modes cannot be mixed in one call. */
 export async function updateInvoiceApi(
   input: UpdateInvoiceInput
 ): Promise<string> {
@@ -92,6 +118,9 @@ export async function updateInvoiceApi(
       : {}),
     ...(input.addLines.length ? { p_add_lines: input.addLines } : {}),
     ...(input.keptLines.length ? { p_kept_lines: input.keptLines } : {}),
+    ...(input.removeLineIds.length
+      ? { p_remove_line_ids: input.removeLineIds }
+      : {}),
   });
 
   if (error) throw error;
@@ -317,6 +346,10 @@ export async function fetchInvoices(): Promise<InvoiceListItem[]> {
     invoice_number: inv.invoice_number,
     invoice_date: inv.invoice_date,
     created_at: inv.created_at,
+    // Stored column, NOT inferred from challanCount: the mode is a fact about
+    // the invoice, and inferring it would let a challan invoice that lost all
+    // its links silently masquerade as a Direct Invoice.
+    invoice_type: (inv.invoice_type ?? "challan") as InvoiceListItem["invoice_type"],
     subtotal: inv.subtotal,
     gst_total: inv.gst_total,
     total_amount: inv.total_amount,

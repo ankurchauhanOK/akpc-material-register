@@ -22,12 +22,30 @@ export function computeLineMoney(
   return { subtotal, gstAmount, lineTotal: round2(subtotal + gstAmount) };
 }
 
-/** Raw wire shape a challan line must provide to create_invoice /
- *  update_invoice (exact jsonb contract of the RPCs). */
+/** Which kind of invoice this is. Stored on `invoices.invoice_type` (a `text`
+ *  column with a CHECK constraint, not a PG enum -- see migration
+ *  20261004000000_direct_invoices.sql).
+ *
+ *  - "challan" — billed against linked Delivery Challans; items are derived
+ *    from the challan and only the rate/GST is editable.
+ *  - "direct"  — items typed in by hand, zero `invoice_challans` rows; every
+ *    item field is editable.
+ *
+ *  The two are EXCLUSIVE: a direct invoice can never gain a challan and a
+ *  challan invoice can never gain a manual line (enforced in update_invoice). */
+export type InvoiceType = "challan" | "direct";
+
+/** Raw wire shape one item must provide to create_invoice / update_invoice
+ *  (exact jsonb contract of the RPCs).
+ *
+ *  `source_document_id` / `source_item_id` are nullable because a Direct
+ *  Invoice's items have NO source. Both are non-null on a challan-backed line
+ *  and both MUST be null on a manual line — create_invoice rejects a manual
+ *  line that carries a source, so a fake link cannot be smuggled in. */
 export type InvoiceLinePayload = {
   line_no: number;
-  source_document_id: string;
-  source_item_id: string;
+  source_document_id: string | null;
+  source_item_id: string | null;
   line_type: Enums<"document_line_type">;
   component_id: string | null;
   item_name: string;
@@ -110,12 +128,15 @@ export type PartySnapshot = {
   };
 };
 
-/** A challan grouped for invoices list. */
+/** An invoice grouped for the invoices list. `invoice_type` drives the
+ *  "Direct" badge — `challanCount` is 0 for a direct invoice, but the badge
+ *  reads the stored column so the mode is never inferred from a join. */
 export type InvoiceListItem = {
   id: string;
   invoice_number: string;
   invoice_date: string;
   created_at: string;
+  invoice_type: InvoiceType;
   subtotal: number;
   gst_total: number;
   total_amount: number;

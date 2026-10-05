@@ -6,24 +6,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeftIcon,
   CheckIcon,
-  ChevronLeftIcon,
-  FilePlus2Icon,
   Loader2Icon,
   PackageOpenIcon,
   PlusIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
 import {
   useActiveMaterials,
@@ -31,10 +20,16 @@ import {
   useEligibleChallans,
 } from "@/hooks/useInvoices";
 import { createInvoiceApi } from "@/lib/invoices/invoiceApi";
-import { computeLineMoney } from "@/lib/invoices/types";
 import { formatDate, formatINR } from "@/lib/format";
-import { GST_PERCENTS, UNIT_LABELS } from "@/lib/supabase/types";
+import { UNIT_LABELS } from "@/lib/supabase/types";
 import { cn } from "@/lib/utils";
+import { InvoiceModeChooser } from "@/components/invoices/invoice-mode-chooser";
+import { InvoiceDirectFlow } from "@/components/invoices/invoice-direct-flow";
+import {
+  InvoiceReviewStep,
+  type ReviewLine,
+} from "@/components/invoices/invoice-review-step";
+import type { InvoiceType } from "@/lib/invoices/types";
 
 type Step = "component" | "challans" | "review";
 
@@ -50,11 +45,62 @@ function todayLocal(): string {
   return new Date(d.getTime() - offset * 60000).toISOString().slice(0, 10);
 }
 
+/**
+ * Entry point for /invoices/new: an explicit mode choice, then one of two
+ * independent wizards.
+ *
+ * The two modes are separate components, not one component with a branch.
+ * They share the Review screen (invoice-review-step.tsx) and nothing else —
+ * a challan invoice has a source document per item, a direct one has none,
+ * and the state to track that difference is enough on its own. Keeping them
+ * apart is what guarantees a direct invoice can never be built out of
+ * half-selected challans, or vice versa.
+ *
+ * `?challan=<id>` skips the chooser and goes straight into the challan wizard:
+ * that deep link already implies the mode, and the caller is the "Create
+ * invoice" action on an existing challan.
+ */
 export function InvoiceCreateFlow({
   preselectChallanId = null,
 }: {
   /** Challan to start from, from /invoices/new?challan=<id>. Resolves its
    *  component, then jumps straight to Review with that challan ticked. */
+  preselectChallanId?: string | null;
+}) {
+  const { canManageMasters } = useAuth();
+  const router = useRouter();
+  const [mode, setMode] = useState<InvoiceType | null>(
+    preselectChallanId ? "challan" : null
+  );
+
+  const backToInvoices = () => router.push("/invoices");
+
+  if (!mode) {
+    return (
+      <InvoiceModeChooser onChoose={setMode} backToInvoices={backToInvoices} />
+    );
+  }
+
+  if (mode === "direct") {
+    return (
+      <InvoiceDirectFlow
+        canManageMasters={canManageMasters}
+        onSwitchMode={() => setMode(null)}
+      />
+    );
+  }
+
+  return <ChallanInvoiceWizard preselectChallanId={preselectChallanId} />;
+}
+
+/**
+ * The pre-existing challan-backed wizard. Unchanged behaviour: component →
+ * challans → review, with the ?challan= preselect. Only the Review screen was
+ * swapped for the shared one.
+ */
+function ChallanInvoiceWizard({
+  preselectChallanId = null,
+}: {
   preselectChallanId?: string | null;
 }) {
   const { canManageMasters } = useAuth();
@@ -113,26 +159,8 @@ export function InvoiceCreateFlow({
     [eligible, activeSelected]
   );
 
-  const reviewLines = useMemo(() => {
-    const out: Array<{
-      key: string;
-      ordinal: number;
-      sourceItemId: string;
-      sourceDocumentId: string;
-      sourceDocumentNumber: string;
-      lineType: "component" | "other";
-      componentId: string | null;
-      componentName: string | null;
-      itemName: string;
-      quantity: number;
-      unit: "pieces" | "kg" | "meter" | "litre" | "set";
-      hsnCode: string | null;
-      rate: number;
-      gst: number;
-      subtotal: number;
-      gstAmount: number;
-      lineTotal: number;
-    }> = [];
+  const reviewLines = useMemo<ReviewLine[]>(() => {
+    const out: ReviewLine[] = [];
     let ordinal = 1;
     for (const c of selectedChallans) {
       for (const it of c.items) {
@@ -152,27 +180,15 @@ export function InvoiceCreateFlow({
           quantity: it.quantity,
           unit: it.unit,
           hsnCode: it.hsnCode,
+          remarks: null,
           rate,
           gst,
-          ...computeLineMoney(it.quantity, rate, gst),
         });
         ordinal++;
       }
     }
     return out;
   }, [selectedChallans, rates]);
-
-  const totals = useMemo(() => {
-    let subtotal = 0;
-    let gst = 0;
-    let total = 0;
-    for (const l of reviewLines) {
-      subtotal += l.subtotal;
-      gst += l.gstAmount;
-      total += l.lineTotal;
-    }
-    return { subtotal, gst, total };
-  }, [reviewLines]);
 
   if (!canManageMasters) {
     return (
@@ -387,210 +403,52 @@ export function InvoiceCreateFlow({
       )}
 
       {activeStep === "review" && (
-        <>
-          {/* Invoice header fields */}
-          <div className="mb-4 rounded-xl border bg-white p-4">
-            <h3 className="mb-3 text-sm font-semibold">Invoice details</h3>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="grid gap-1.5">
-                <Label className="text-sm font-medium">Invoice date</Label>
-                <Input
-                  type="date"
-                  value={invoiceDate}
-                  onChange={(e) => setInvoiceDate(e.target.value)}
-                  className="h-10"
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label className="text-sm font-medium">Customer ref no.</Label>
-                <Input
-                  value={customerRefNo}
-                  onChange={(e) => setCustomerRefNo(e.target.value)}
-                  placeholder="Optional"
-                  className="h-10"
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label className="text-sm font-medium">Customer ref date</Label>
-                <Input
-                  type="date"
-                  value={customerRefDate}
-                  onChange={(e) => setCustomerRefDate(e.target.value)}
-                  className="h-10"
-                />
-              </div>
-              <div className="grid gap-1.5">
-                <Label className="text-sm font-medium">Notes</Label>
-                <Input
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Optional"
-                  className="h-10"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Party + challans summary */}
-          <div className="mb-4 rounded-xl border bg-white p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-zinc-500">
-                  Bill To
-                </p>
-                <p className="text-sm font-semibold">
-                  {selectedChallans[0]?.party_company ??
-                    selectedChallans[0]?.party_name ??
-                    "Customer"}
-                </p>
-                <p className="text-xs text-zinc-500">
-                  {selectedChallans[0]?.party_location ?? ""}
-                </p>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setWizardTouched(true);
-                  setStep("challans");
-                }}
-              >
-                <ChevronLeftIcon /> Change challans
-              </Button>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {selectedChallans.map((c) => (
-                <Badge key={c.id} variant="secondary">
-                  {c.document_number}
-                </Badge>
-              ))}
-            </div>
-          </div>
-
-          {/* Lines */}
-          <div className="mb-4 overflow-hidden rounded-xl border bg-white">
-            <div className="border-b px-4 py-3">
-              <h3 className="text-sm font-semibold">Line items</h3>
-              <p className="mt-0.5 text-xs text-zinc-500">
-                Rates come from each Component Master (or the challan). Edit any
-                line below — the rate is snapshotted onto this invoice only.
-              </p>
-            </div>
-            <div className="divide-y">
-              {reviewLines.map((l) => (
-                <div key={l.key} className="px-4 py-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">
-                        <span className="mr-1.5 text-zinc-400">{l.ordinal}.</span>
-                        {l.itemName}
-                      </p>
-                      <p className="truncate text-xs text-zinc-500">
-                        {l.sourceDocumentNumber}
-                        {l.componentName ? ` · ${l.componentName}` : ""}
-                      </p>
-                    </div>
-                    <p className="whitespace-nowrap text-sm font-semibold">
-                      {formatINR(l.lineTotal)}
-                    </p>
-                  </div>
-                  <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    <div className="col-span-2 text-xs text-zinc-500 sm:col-span-1">
-                      {formatQtyLocal(l.quantity)} {UNIT_LABELS[l.unit]}
-                      {l.hsnCode ? (
-                        <span className="text-zinc-400"> · HSN {l.hsnCode}</span>
-                      ) : null}
-                    </div>
-                    <Field label="Rate (₹)">
-                      <Input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        value={l.rate}
-                        onChange={(e) => {
-                          const rate = Number(e.target.value);
-                          setRates((prev) => ({
-                            ...prev,
-                            [l.sourceItemId]: {
-                              rate: Number.isFinite(rate) ? rate : l.rate,
-                              gst: prev[l.sourceItemId]?.gst ?? l.gst,
-                            },
-                          }));
-                        }}
-                        className="h-9 text-sm"
-                      />
-                    </Field>
-                    <Field label="GST %">
-                      <Select
-                        value={String(l.gst)}
-                        onValueChange={(v) =>
-                          setRates((prev) => ({
-                            ...prev,
-                            [l.sourceItemId]: {
-                              rate: prev[l.sourceItemId]?.rate ?? l.rate,
-                              gst: Number(v),
-                            },
-                          }))
-                        }
-                      >
-                        <SelectTrigger className="h-9 text-sm">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {GST_PERCENTS.map((g) => (
-                            <SelectItem key={g} value={String(g)}>
-                              {g}%
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Totals */}
-          <div className="mb-4 ml-auto max-w-xs space-y-1.5 rounded-xl border bg-white p-4 text-sm">
-            <div className="flex items-center justify-between text-zinc-600">
-              <span>Subtotal</span>
-              <span>{formatINR(totals.subtotal)}</span>
-            </div>
-            <div className="flex items-center justify-between text-zinc-600">
-              <span>GST</span>
-              <span>{formatINR(totals.gst)}</span>
-            </div>
-            <div className="flex items-center justify-between border-t border-border pt-1.5 text-base font-semibold">
-              <span>Total</span>
-              <span>{formatINR(totals.total)}</span>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-end gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                  setWizardTouched(true);
-                  setStep("challans");
-                }}
-              disabled={saving}
-            >
-              Back
-            </Button>
-            <Button onClick={handleCreate} disabled={saving}>
-              {saving ? (
-                <>
-                  <Loader2Icon className="size-4 animate-spin" /> Creating…
-                </>
-              ) : (
-                <>
-                  <FilePlus2Icon /> Create Invoice
-                </>
-              )}
-            </Button>
-          </div>
-        </>
+        <InvoiceReviewStep
+          mode="challan"
+          header={{ invoiceDate, customerRefNo, customerRefDate, notes }}
+          onHeaderChange={(patch) => {
+            if (patch.invoiceDate !== undefined) setInvoiceDate(patch.invoiceDate);
+            if (patch.customerRefNo !== undefined)
+              setCustomerRefNo(patch.customerRefNo);
+            if (patch.customerRefDate !== undefined)
+              setCustomerRefDate(patch.customerRefDate);
+            if (patch.notes !== undefined) setNotes(patch.notes);
+          }}
+          partyName={
+            selectedChallans[0]?.party_company ??
+            selectedChallans[0]?.party_name ??
+            "Customer"
+          }
+          partyLocation={selectedChallans[0]?.party_location ?? null}
+          challanChips={selectedChallans.map((c) => c.document_number)}
+          lines={reviewLines}
+          onRateChange={(key, patch) =>
+            setRates((prev) => {
+              const cur = prev[key] ?? {
+                rate: 0,
+                gst: 0,
+              };
+              const line = reviewLines.find((l) => l.key === key);
+              return {
+                ...prev,
+                [key]: {
+                  rate: patch.rate ?? cur.rate ?? line?.rate ?? 0,
+                  gst: patch.gst ?? cur.gst ?? line?.gst ?? 0,
+                },
+              };
+            })
+          }
+          onBack={() => {
+            setWizardTouched(true);
+            setStep("challans");
+          }}
+          onEditItems={() => {
+            setWizardTouched(true);
+            setStep("challans");
+          }}
+          onConfirm={handleCreate}
+          saving={saving}
+        />
       )}
     </div>
   );
@@ -692,17 +550,4 @@ function ChallanPicker({
       )}
     </div>
   );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="grid gap-1">
-      <Label className="text-xs font-medium text-zinc-500">{label}</Label>
-      {children}
-    </div>
-  );
-}
-
-function formatQtyLocal(n: number): string {
-  return new Intl.NumberFormat("en-IN", { maximumFractionDigits: 4 }).format(n);
 }

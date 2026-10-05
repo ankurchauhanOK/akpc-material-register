@@ -81,6 +81,34 @@ export async function sweepInvoicesForChallans(
 }
 
 /**
+ * Permanently DELETE every invoice billed TO this company (party).
+ *
+ * The company-delete path cannot rely on sweepInvoicesForChallans() alone: a
+ * Direct Invoice has no invoice_challans row, so it is unreachable from the
+ * company's documents. Since `invoices.company_id` is NOT NULL REFERENCES
+ * companies(id) with no ON DELETE action, an unswept direct invoice would
+ * fail the party delete on the FK — after the admin was told it was safe.
+ *
+ * Selecting by company_id also picks up the company's challan-backed invoices
+ * directly, which is the same set the document-based sweep reaches, so this is
+ * a superset rather than a second, competing rule. Matches what
+ * getCompanyUsageBreakdown discloses.
+ */
+export async function sweepInvoicesForCompany(
+  companyId: string
+): Promise<void> {
+  const supabase = createClient();
+
+  const { data: invoices, error } = await supabase
+    .from("invoices")
+    .select("id")
+    .eq("company_id", companyId);
+  if (error) throw error;
+
+  await sweepInvoices([...new Set((invoices ?? []).map((i) => i.id))]);
+}
+
+/**
  * Permanently DELETE every invoice that bills a line for the given component.
  * An invoice may also bill other components; it is removed whole rather than
  * left with a hole (see sweepInvoices). Matches what
@@ -151,9 +179,23 @@ export async function getCompanyUsageBreakdown(
     .select("invoice_id")
     .in("challan_id", (companyDocs ?? []).map((d) => d.id));
   if (invoiceError) throw invoiceError;
-  const invoiceCount = new Set(
-    (invoiceLinks ?? []).map((l) => l.invoice_id)
-  ).size;
+
+  // A DIRECT invoice has no invoice_challans row, so the join above can never
+  // see it — yet `invoices.company_id` is NOT NULL REFERENCES companies(id)
+  // with no ON DELETE action, so one would hard-fail the party delete. It has
+  // to be counted here too, or the admin would be told "0 invoices" and then
+  // hit an FK error. Union on invoice id: an invoice can be reachable both ways.
+  const { data: companyInvoices, error: companyInvoiceError } = await supabase
+    .from("invoices")
+    .select("id")
+    .eq("company_id", id);
+  if (companyInvoiceError) throw companyInvoiceError;
+
+  const invoiceIds = new Set<string>([
+    ...(invoiceLinks ?? []).map((l) => l.invoice_id),
+    ...(companyInvoices ?? []).map((i) => i.id),
+  ]);
+  const invoiceCount = invoiceIds.size;
 
   return {
     documents: docCount ?? 0,
@@ -223,6 +265,13 @@ async function purgeStoragePaths(paths: (string | null)[]): Promise<void> {
 export async function deleteCompanyPermanently(id: string): Promise<void> {
   const supabase = createClient();
 
+  // Unconditional and FIRST. Every invoice billed to this party has to go
+  // before the company row itself: `invoices.company_id` is NOT NULL with no
+  // ON DELETE action, so a surviving invoice — notably a Direct Invoice, which
+  // the document-based sweep below cannot see — would raise an FK violation on
+  // the final `companies` DELETE and abort the whole party delete.
+  await sweepInvoicesForCompany(id);
+
   const { data: documents, error: docError } = await supabase
     .from("receiving_documents")
     .select("id, external_document_path")
@@ -244,7 +293,11 @@ export async function deleteCompanyPermanently(id: string): Promise<void> {
   if (documentIds.length > 0) {
     // Before the documents go: an invoiced challan would otherwise be
     // cascade-swept by the DB, silently destroying billing history the admin
-    // was never told about.
+    // was never told about. Redundant for invoices already removed by
+    // sweepInvoicesForCompany() above — delete_invoice is idempotent — but
+    // kept so an invoice that somehow reached an invoice_challans row without
+    // matching this company's id is still swept deliberately rather than
+    // cascade-deleted.
     await sweepInvoicesForChallans(documentIds);
 
     const { error } = await supabase
