@@ -424,16 +424,15 @@ function ChallanInvoiceWizard({
           lines={reviewLines}
           onRateChange={(key, patch) =>
             setRates((prev) => {
-              const cur = prev[key] ?? {
-                rate: 0,
-                gst: 0,
-              };
               const line = reviewLines.find((l) => l.key === key);
+              // 0 is not nullish: never seed this fallback with 0.
+              // On the ?challan= path rates are not pre-seeded, so use the rendered line.
+              const cur = prev[key] ?? { rate: line?.rate ?? 0, gst: line?.gst ?? 0 };
               return {
                 ...prev,
                 [key]: {
-                  rate: patch.rate ?? cur.rate ?? line?.rate ?? 0,
-                  gst: patch.gst ?? cur.gst ?? line?.gst ?? 0,
+                  rate: patch.rate ?? cur.rate,
+                  gst: patch.gst ?? cur.gst,
                 },
               };
             })
